@@ -114,8 +114,10 @@ Do not mark a task complete without reporting verification results.
   - `git ls-remote ssh://git@ssh.github.com:443/lowyes/cad-wecaht.git`
   - `conda run -n base python harness\run_harness.py`
   - `conda run -n base python harness\test_all_images.py`
-- Result: PASS with upload warning. Git is available and validation passed. Direct GitHub SSH on port 22 timed out. SSH-over-443 reached GitHub but failed host-key verification before adding the host key.
+  - `git ls-remote origin`
+  - `git push -u origin main`
+- Result: PASS. Git is available, validation passed, and `main` was pushed to `https://github.com/lowyes/cad-wecaht.git`. Direct GitHub SSH on port 22 timed out, so the push used HTTPS with the existing Git Credential Manager `lowyes` login.
 - Known risks:
   - Push may still fail if GitHub SSH credentials are not configured for this machine/account.
   - The remote repository may already contain history; initial push strategy depends on remote state.
-- Next suggested step: Trust GitHub SSH-over-443 host key, create the local commit, and push to `lowyes/cad-wecaht`.
+- Next suggested step: Continue future pushes with HTTPS/Git Credential Manager, or add a GitHub SSH key later if SSH pushes are preferred.
