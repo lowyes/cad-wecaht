@@ -1,0 +1,29 @@
+# Python cache/build artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local agent/editor state
+.claude/
+.vscode/
+.idea/
+
+# Generated diagnostics and regenerated test artifacts
+data/debug/
+data/test_images/generated/
+
+# Local environment files
+.env
+.env.*

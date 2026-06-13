@@ -1,0 +1,12 @@
+[
+  {
+    "model_id": "part_0001",
+    "name": "测试零件",
+    "category": "基础零件",
+    "ref_image": "data/ref_images/part_0001.png",
+    "feature_file": "data/features/part_0001.npz",
+    "model_format": "gltf",
+    "gltf_url": "/static/models/part_0001/test2.gltf",
+    "bin_file": "/static/models/part_0001/data.bin"
+  }
+]
