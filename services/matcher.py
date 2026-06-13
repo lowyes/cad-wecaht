@@ -5,6 +5,7 @@ import numpy as np
 
 from .feature_extract import deserialize_keypoints, extract_sift_features
 from .image_preprocess import preprocess_for_sift
+from .view_region_detector import match_region_sets
 
 
 INLIER_THRESHOLD = 10
@@ -18,6 +19,7 @@ NEAR_MISS_INLIERS = 8
 NEAR_MISS_RATIO = 0.25
 NEAR_MISS_COVERAGE = 0.22
 NEAR_MISS_LINE_SCORE = 0.29
+NEAR_MISS_COMPONENT_SCORE = 0.12
 
 
 def match_sift(query_des, ref_des, ratio_threshold: float = 0.70):
@@ -119,6 +121,114 @@ def compute_line_layout_score(query_image_path: str, ref_image_path: str) -> flo
     recall = weighted_recall(ref_segments, query_segments)
     precision = weighted_recall(query_segments, ref_segments)
     return float(2 * recall * precision / (recall + precision + 1e-6))
+
+
+def _extract_view_components(image_path: str) -> list[dict]:
+    """Extract large view components and normalize each component mask."""
+    image = preprocess_for_sift(image_path, mode="otsu")
+    ink = (image < 128).astype(np.uint8) * 255
+    ink = cv2.morphologyEx(
+        ink,
+        cv2.MORPH_CLOSE,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5)),
+    )
+    height, width = ink.shape[:2]
+    contours, _ = cv2.findContours(ink, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    components = []
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        relative_area = area / max(height * width, 1)
+        if relative_area < 0.01:
+            continue
+
+        x, y, component_width, component_height = cv2.boundingRect(contour)
+        crop = ink[y : y + component_height, x : x + component_width]
+
+        normalized = np.zeros((96, 96), dtype=np.uint8)
+        scale = min(88 / max(component_width, 1), 88 / max(component_height, 1))
+        resized_width = max(1, int(component_width * scale))
+        resized_height = max(1, int(component_height * scale))
+        resized = cv2.resize(
+            crop,
+            (resized_width, resized_height),
+            interpolation=cv2.INTER_NEAREST,
+        )
+        offset_x = (96 - resized_width) // 2
+        offset_y = (96 - resized_height) // 2
+        normalized[offset_y : offset_y + resized_height, offset_x : offset_x + resized_width] = resized
+
+        components.append({
+            "area": float(relative_area),
+            "cx": float((x + component_width / 2) / width),
+            "cy": float((y + component_height / 2) / height),
+            "mask": normalized,
+        })
+
+    return sorted(components, key=lambda component: -component["area"])[:4]
+
+
+def _component_mask_similarity(query_mask: np.ndarray, ref_mask: np.ndarray) -> float:
+    query = cv2.dilate(query_mask, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))) > 0
+    ref = cv2.dilate(ref_mask, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))) > 0
+    intersection = np.logical_and(query, ref).sum()
+    union = np.logical_or(query, ref).sum()
+    iou = intersection / max(union, 1)
+
+    query_float = (query_mask > 0).astype(np.float32)
+    ref_float = (ref_mask > 0).astype(np.float32)
+    query_float = (query_float - query_float.mean()) / (query_float.std() + 1e-6)
+    ref_float = (ref_float - ref_float.mean()) / (ref_float.std() + 1e-6)
+    correlation = float((query_float * ref_float).mean())
+
+    return float(0.65 * iou + 0.35 * max(0.0, correlation))
+
+
+def compute_component_shape_score(query_image_path: str, ref_image_path: str) -> float:
+    """
+    Compare normalized large-view component masks.
+
+    This is generic for multi-model CAD drawings: it compares the internal
+    shape of each major view, not a part-specific primitive such as a hole.
+    """
+    try:
+        query_components = _extract_view_components(query_image_path)
+        ref_components = _extract_view_components(ref_image_path)
+    except Exception:
+        return 0.0
+
+    total = sum(component["area"] for component in ref_components) or 1.0
+    score = 0.0
+    used_query_indexes = set()
+
+    for ref_component in ref_components:
+        best_score = 0.0
+        best_index = None
+        for index, query_component in enumerate(query_components):
+            if index in used_query_indexes:
+                continue
+
+            distance = np.hypot(
+                (ref_component["cx"] - query_component["cx"]) * 1.5,
+                (ref_component["cy"] - query_component["cy"]) * 1.5,
+            )
+            if distance > 0.22:
+                continue
+
+            size_score = np.exp(
+                -abs(np.log((query_component["area"] + 1e-6) / (ref_component["area"] + 1e-6))) * 0.4
+            )
+            mask_score = _component_mask_similarity(query_component["mask"], ref_component["mask"])
+            candidate_score = mask_score * size_score * max(0.0, 1.0 - distance / 0.22)
+            if candidate_score > best_score:
+                best_score = float(candidate_score)
+                best_index = index
+
+        if best_index is not None:
+            used_query_indexes.add(best_index)
+            score += ref_component["area"] * best_score
+
+    return float(score / total)
 
 
 def compute_homography_inliers(query_kp, ref_kp, good_matches, query_shape=None):
@@ -247,6 +357,12 @@ def match_with_sift_ransac(query_image_path: str, manifest: list, preprocess_mod
             "inlier_coverage": 0.0,
             "homography_valid": False,
             "line_score": 0.0,
+            "component_score": 0.0,
+            "region_score": 0.0,
+            "matched_region_count": 0,
+            "query_region_count": 0,
+            "ref_region_count": 0,
+            "region_supported": False,
             "near_miss_promoted": False,
         }
 
@@ -298,6 +414,14 @@ def match_with_sift_ransac(query_image_path: str, manifest: list, preprocess_mod
         if ref_image_path and Path(ref_image_path).exists():
             line_score = compute_line_layout_score(query_image_path, ref_image_path)
             model_result["line_score"] = round(float(line_score), 3)
+            component_score = compute_component_shape_score(query_image_path, ref_image_path)
+            model_result["component_score"] = round(float(component_score), 3)
+            region_summary = match_region_sets(query_image_path, ref_image_path)
+            model_result["region_score"] = region_summary["region_score"]
+            model_result["matched_region_count"] = region_summary["matched_region_count"]
+            model_result["query_region_count"] = region_summary["query_region_count"]
+            model_result["ref_region_count"] = region_summary["ref_region_count"]
+            model_result["region_supported"] = bool(region_summary["region_supported"])
 
         strict_match = (
             model_result["inliers"] >= INLIER_THRESHOLD
@@ -311,6 +435,11 @@ def match_with_sift_ransac(query_image_path: str, manifest: list, preprocess_mod
             and model_result["inlier_ratio"] >= NEAR_MISS_RATIO
             and model_result["inlier_coverage"] >= NEAR_MISS_COVERAGE
             and model_result["line_score"] >= NEAR_MISS_LINE_SCORE
+            and (
+                model_result["component_score"] >= NEAR_MISS_COMPONENT_SCORE
+                or model_result["region_supported"]
+                or model_result["inliers"] <= 10
+            )
         )
 
         model_result["near_miss_promoted"] = bool(not strict_match and near_miss_match)
@@ -344,12 +473,18 @@ def match_query_to_models(query_image_path: str, manifest: list) -> list:
                 "inliers": 0,
                 "inlier_ratio": 0.0,
                 "line_score": 0.0,
+                "component_score": 0.0,
+                "region_score": 0.0,
+                "matched_region_count": 0,
+                "query_region_count": 0,
+                "ref_region_count": 0,
+                "region_supported": False,
                 "mode_votes": 0,
             })
             continue
 
         votes = sum(1 for model in matches if model["matched"])
-        best = max(matches, key=lambda model: (model["confidence"], model["line_score"]))
+        best = max(matches, key=lambda model: (model["confidence"], model["region_score"], model["line_score"]))
 
         final_matched = votes >= 1
 
@@ -363,9 +498,18 @@ def match_query_to_models(query_image_path: str, manifest: list) -> list:
             "inlier_ratio": best.get("inlier_ratio", 0.0),
             "inlier_coverage": best.get("inlier_coverage", 0.0),
             "line_score": best.get("line_score", 0.0),
+            "component_score": best.get("component_score", 0.0),
+            "region_score": best.get("region_score", 0.0),
+            "matched_region_count": best.get("matched_region_count", 0),
+            "query_region_count": best.get("query_region_count", 0),
+            "ref_region_count": best.get("ref_region_count", 0),
+            "region_supported": any(model.get("region_supported") for model in matches),
             "mode_votes": votes,
             "near_miss_promoted": any(model.get("near_miss_promoted") for model in matches),
         })
 
-    results.sort(key=lambda item: (item["matched"], item["confidence"], item["line_score"]), reverse=True)
+    results.sort(
+        key=lambda item: (item["matched"], item["confidence"], item["region_score"], item["line_score"]),
+        reverse=True,
+    )
     return results

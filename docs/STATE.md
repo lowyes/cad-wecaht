@@ -121,3 +121,35 @@ Do not mark a task complete without reporting verification results.
   - Push may still fail if GitHub SSH credentials are not configured for this machine/account.
   - The remote repository may already contain history; initial push strategy depends on remote state.
 - Next suggested step: Continue future pushes with HTTPS/Git Credential Manager, or add a GitHub SSH key later if SSH pushes are preferred.
+
+### 2026-06-14 00:58:02 +08:00
+
+- Agent/tool used: Codex via local PowerShell, `apply_patch`, conda `base`.
+- Change scope: Added generalized automatic view-region detection and region-to-region matching diagnostics for CAD drawing recognition.
+- Files changed:
+  - `services/view_region_detector.py`
+  - `services/matcher.py`
+  - `scripts/build_feature_index.py`
+  - `harness/test_all_images.py`
+  - `docs/ALGORITHM.md`
+  - `docs/STATE.md`
+  - `data/features/part_0001.npz`
+  - `data/features/part_0001_region_01_sift.npz`
+  - `data/features/part_0001_region_02_sift.npz`
+  - `data/ref_regions/part_0001/region_01.png`
+  - `data/ref_regions/part_0001/region_02.png`
+- Reason for change: Improve generalization beyond fixed front/top/side crop assumptions by automatically detecting major view regions, matching query regions against reference regions, and using multi-region support as a stronger rejection signal for visually similar negatives.
+- Verification commands run:
+  - `conda run -n base python -m py_compile services\view_region_detector.py services\matcher.py harness\test_all_images.py scripts\build_feature_index.py`
+  - `conda run -n base python scripts\build_feature_index.py`
+  - `conda run -n base python harness\test_all_images.py`
+  - `conda run -n base python harness\run_harness.py`
+  - Direct conda base Python API batch POST to `/api/recognize` for all files in the labeled test set
+  - Direct conda base Python generation of all feature-match visualizations under `data/debug/feature_matches_all/`
+- Result: PASS. Positives `scan_test_01`, `scan_test_02`, and `scan_test_03` match; negatives `scan_test_04` through `scan_test_08`, `random_noise.jpg`, and `noise_test.jpg` are rejected. Full backend harness passed.
+- Known risks:
+  - Region thresholds are calibrated on the current small labeled set; they should be recalibrated when many more model classes are added.
+  - Current automatic view detection found 2 major reference regions for `part_0001`, not separate hand-labeled front/top/side views; this is intentional layout-free behavior but still needs visual review as the dataset grows.
+  - FastAPI TestClient still emits a Starlette deprecation warning about `httpx`.
+  - No `Makefile` exists, so `make verify-major` is still unavailable and was skipped.
+- Next suggested step: Add more labeled positives/negatives per new model and introduce top1/top2 margin checks before scaling toward hundreds of models.

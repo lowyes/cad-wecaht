@@ -1,79 +1,119 @@
 #!/usr/bin/env python3
-"""
-构建特征索引脚本
+"""Build full-image and auto-detected view-region SIFT feature indexes."""
 
-读取 data/manifest.json，对每个模型的参考图提取 SIFT 特征，
-保存到对应的 .npz 文件中。
+from __future__ import annotations
 
-运行方式：
-    python scripts/build_feature_index.py
-"""
-
-import sys
 import json
-import numpy as np
+import sys
 from pathlib import Path
+
 import cv2
-
-# 添加项目根目录到路径
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from services.image_preprocess import preprocess_for_sift
-from services.feature_extract import extract_sift_features
+import numpy as np
 
 
-def build_feature_index():
-    """构建特征索引"""
-    # 读取 manifest
-    manifest_path = Path("data/manifest.json")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from services.feature_extract import extract_sift_features  # noqa: E402
+from services.image_preprocess import preprocess_for_sift  # noqa: E402
+from services.view_region_detector import (  # noqa: E402
+    crop_regions,
+    detect_view_regions,
+    preprocess_to_binary_for_regions,
+)
+
+
+def serialize_keypoints(keypoints) -> np.ndarray:
+    if not keypoints:
+        return np.array([], dtype=np.float32).reshape(0, 7)
+    return np.array(
+        [
+            (kp.pt[0], kp.pt[1], kp.size, kp.angle, kp.response, kp.octave, kp.class_id)
+            for kp in keypoints
+        ],
+        dtype=np.float32,
+    )
+
+
+def save_feature_file(image: np.ndarray, feature_path: Path) -> tuple[int, int]:
+    keypoints, descriptors = extract_sift_features(image)
+    feature_path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(
+        str(feature_path),
+        descriptors=descriptors,
+        keypoints=serialize_keypoints(keypoints),
+        keypoints_count=len(keypoints),
+    )
+    return len(keypoints), len(descriptors)
+
+
+def build_region_index(model_id: str, ref_image_path: Path, features_dir: Path) -> int:
+    binary = preprocess_to_binary_for_regions(str(ref_image_path))
+    boxes = detect_view_regions(binary)
+    regions = crop_regions(binary, boxes)
+
+    region_dir = PROJECT_ROOT / "data" / "ref_regions" / model_id
+    region_dir.mkdir(parents=True, exist_ok=True)
+
+    for old_file in region_dir.glob("region_*.png"):
+        old_file.unlink()
+    for old_file in features_dir.glob(f"{model_id}_region_*_sift.npz"):
+        old_file.unlink()
+
+    for region in regions:
+        region_number = int(region["index"]) + 1
+        region_image = region["image"]
+        region_image_path = region_dir / f"region_{region_number:02d}.png"
+        region_feature_path = features_dir / f"{model_id}_region_{region_number:02d}_sift.npz"
+        cv2.imwrite(str(region_image_path), region_image)
+        keypoint_count, descriptor_count = save_feature_file(region_image, region_feature_path)
+        print(
+            f"  region_{region_number:02d}: "
+            f"{keypoint_count} keypoints, {descriptor_count} descriptors -> {region_feature_path}"
+        )
+
+    return len(regions)
+
+
+def build_feature_index() -> int:
+    manifest_path = PROJECT_ROOT / "data" / "manifest.json"
     if not manifest_path.exists():
-        print("错误：data/manifest.json 不存在")
-        return
+        print("[FAIL] data/manifest.json not found")
+        return 1
 
-    with open(manifest_path, "r", encoding="utf-8") as f:
-        manifest = json.load(f)
+    with manifest_path.open("r", encoding="utf-8") as file:
+        manifest = json.load(file)
 
-    # 确保 features 目录存在
-    features_dir = Path("data/features")
+    features_dir = PROJECT_ROOT / "data" / "features"
     features_dir.mkdir(parents=True, exist_ok=True)
 
-    # 处理每个模型
+    failures = 0
     for item in manifest:
         model_id = item["model_id"]
-        ref_image_path = item["ref_image"]
-        feature_file_path = item["feature_file"]
+        ref_image_path = PROJECT_ROOT / item["ref_image"]
+        feature_file_path = PROJECT_ROOT / item["feature_file"]
 
-        # 检查参考图是否存在
-        if not Path(ref_image_path).exists():
-            print(f"警告：参考图不存在 {ref_image_path}，跳过 {model_id}")
+        if not ref_image_path.exists():
+            print(f"[WARN] reference image not found for {model_id}: {ref_image_path}")
+            failures += 1
             continue
 
         try:
-            # 预处理图像
-            gray = preprocess_for_sift(ref_image_path, mode="gray")
-
-            # 提取特征
-            keypoints, descriptors = extract_sift_features(gray)
-
-            # 序列化关键点 (只保存 x, y 坐标)
-            keypoints_data = np.array([
-                (kp.pt[0], kp.pt[1], kp.size, kp.angle, kp.response, kp.octave, kp.class_id)
-                for kp in keypoints
-            ]) if keypoints else np.array([], dtype=np.float32)
-
-            # 保存特征
-            np.savez_compressed(
-                feature_file_path,
-                descriptors=descriptors,
-                keypoints=keypoints_data,
-                keypoints_count=len(keypoints)
+            full_image = preprocess_for_sift(str(ref_image_path), mode="gray")
+            keypoint_count, descriptor_count = save_feature_file(full_image, feature_file_path)
+            print(
+                f"Built full feature index for {model_id}: "
+                f"{keypoint_count} keypoints, {descriptor_count} descriptors -> {feature_file_path}"
             )
 
-            print(f"Built feature index for {model_id}: {len(keypoints)} keypoints, {len(descriptors)} descriptors")
+            region_count = build_region_index(model_id, ref_image_path, features_dir)
+            print(f"Built {region_count} auto-detected reference regions for {model_id}")
+        except Exception as exc:
+            print(f"[FAIL] error while processing {model_id}: {exc}")
+            failures += 1
 
-        except Exception as e:
-            print(f"错误：处理 {model_id} 时出错：{e}")
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":
-    build_feature_index()
+    raise SystemExit(build_feature_index())
