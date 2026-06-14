@@ -1,0 +1,71 @@
+{
+  "model_id": "part_0001",
+  "name": "test mechanical support part",
+  "verified": true,
+  "drawing_type": "three_view_mechanical_drawing",
+  "part_category": "base_with_center_boss_and_side_open_slots",
+  "top_view": {
+    "exists": true,
+    "outer_contour_type": "rectangular_base_with_left_right_open_semicircle_slots",
+    "hole_layout": "single_center_concentric_hole",
+    "has_center_concentric_circles": true,
+    "center_circle_count": 2,
+    "side_feature_type": "open_semicircle_slots",
+    "left_side_feature": "open_semicircle_slot",
+    "right_side_feature": "open_semicircle_slot",
+    "side_closed_hole_count": 0,
+    "has_chamfered_outer_contour": false,
+    "symmetry": "high"
+  },
+  "front_view": {
+    "exists": true,
+    "main_shape": "rectangular_base_with_raised_cylindrical_boss",
+    "has_raised_boss": true,
+    "has_hidden_lines": true
+  },
+  "side_view": {
+    "exists": true,
+    "main_shape": "rectangular_projection_with_center_hidden_lines"
+  },
+  "dimensions": {
+    "overall_length": 20,
+    "overall_width": 10,
+    "total_height": 10,
+    "base_height": 5,
+    "boss_width": 10,
+    "boss_height": 5,
+    "center_outer_diameter": 10,
+    "center_inner_diameter": 5,
+    "side_slot_width": 3,
+    "side_hole_diameter": null
+  },
+  "key_features": [
+    "top view has a central concentric circle pair",
+    "left and right side features are open semicircular slots",
+    "outer contour is a rectangular base",
+    "front view has a raised cylindrical boss"
+  ],
+  "negative_features": [
+    "not_chamfered_plate",
+    "not_two_side_closed_holes",
+    "not_plate_with_three_holes",
+    "not_polygon_outer_contour"
+  ],
+  "match_priority": {
+    "very_important": [
+      "top_view.hole_layout",
+      "top_view.side_feature_type",
+      "top_view.outer_contour_type"
+    ],
+    "important": [
+      "top_view.has_chamfered_outer_contour",
+      "dimensions.overall_length",
+      "dimensions.overall_width"
+    ],
+    "weak": [
+      "view_count",
+      "symmetry"
+    ]
+  },
+  "brief_description": "Three-view mechanical drawing with a rectangular base, central concentric hole, open semicircular side slots, and a raised boss."
+}

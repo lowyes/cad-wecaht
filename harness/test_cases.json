@@ -1,0 +1,15 @@
+[
+  {
+    "image": "data/ref_images/part_0001.png",
+    "expected_matched": true,
+    "expected_model_id": "part_0001"
+  },
+  {
+    "image": "data/test_images/scan_test_05.png",
+    "expected_matched": false
+  },
+  {
+    "image": "data/test_images/scan_test_06.png",
+    "expected_matched": false
+  }
+]

@@ -153,3 +153,96 @@ Do not mark a task complete without reporting verification results.
   - FastAPI TestClient still emits a Starlette deprecation warning about `httpx`.
   - No `Makefile` exists, so `make verify-major` is still unavailable and was skipped.
 - Next suggested step: Add more labeled positives/negatives per new model and introduce top1/top2 margin checks before scaling toward hundreds of models.
+
+### 2026-06-14 01:20:00 +08:00
+
+- Agent/tool used: Claude (GLM-5) via Trae IDE
+- Change scope: Created independent SURF feature detection test folder for algorithm evaluation.
+- Files changed:
+  - `experiments/surf_test/test_surf.py` - SURF feature detection test script
+  - `experiments/surf_test/README.md` - Documentation for SURF testing
+- Reason for change: User requested to test SURF algorithm for potential use in engineering drawing recognition, without polluting main source code.
+- Verification commands run:
+  - `D:\Users\miniconda3\python.exe experiments/surf_test/test_surf.py`
+- Result: **WARNING**. SURF is not available in current OpenCV 4.13.0 (requires opencv-contrib-python). Script automatically fell back to SIFT comparison test. SIFT test passed successfully.
+- Known risks:
+  - SURF requires `opencv-contrib-python` which is not installed in the current environment.
+  - Installing opencv-contrib-python may affect other dependencies.
+  - SURF patent expired in 2020, but some OpenCV builds still require contrib module.
+- Next suggested step: If SURF testing is desired, run `pip install opencv-contrib-python==4.13.0.0` to enable SURF support.
+
+### 2026-06-14 02:30:00 +08:00
+
+- Agent/tool used: Claude (GLM-5) via Trae IDE
+- Change scope: Reviewed and updated harness documentation in README.md for clarity.
+- Files changed:
+  - `README.md` - Updated "Test Harness" section with clear run order and output explanation
+- Reason for change: User requested optimization of test harness documentation to ensure proper run sequence and clear understanding of output markers.
+- Verification commands run:
+  - `conda run -n base python harness/generate_test_images.py`
+  - `conda run -n base python harness/run_harness.py`
+- Result: **PASS**. generate_test_images.py generated 14 test images. run_harness.py passed all checks: feature index (349 descriptors), /api/health, /api/models, static files (gltf and bin), and /api/recognize. Comparison experiment completed successfully.
+- Known risks:
+  - None. Existing harness was already well-implemented.
+- Next suggested step: User may want to test matching on generated images to evaluate recognition quality.
+
+### 2026-06-14 03:00:00 +08:00
+
+- Agent/tool used: Claude (GLM-5) via Trae IDE
+- Change scope: Converted SURF test to Generalized Hough Transform / Shape Based Matching test.
+- Files changed:
+  - `experiments/surf_test/test_surf.py` - Rewrote to test Generalized Hough Transform
+  - `experiments/surf_test/README.md` - Updated documentation for new algorithm
+- Reason for change: User requested testing shape-based matching algorithm instead of SURF. Generalized Hough Transform is more suitable for detecting geometric shapes (rectangles, circles, slots) in engineering drawings.
+- Verification commands run:
+  - `conda run -n base python experiments/surf_test/test_surf.py`
+- Result: **PASS**. Shape analysis test completed. Results show:
+  - Reference image (part_0001.png): structure_score=0.600 (2 bases, 3 side slots)
+  - scan_test_01.jpg: structure_score=0.000 (too blurry for edge detection)
+  - scan_test_02.jpg: structure_score=0.600, similarity=1.000 with reference
+  - scan_test_03.png: structure_score=0.600, similarity=1.000 with reference
+  - Noise images correctly rejected with score=0.000
+- Known risks:
+  - Blurry images (scan_test_01) fail edge detection, resulting in zero structure score
+  - Shape detection parameters may need tuning for different drawing types
+- Next suggested step: Consider integrating shape_score as a supplementary signal to SIFT confidence for improved recognition accuracy.
+
+### 2026-06-14 14:16:21 +08:00
+
+- Agent/tool used: Codex via local PowerShell, `apply_patch`, conda `base`.
+- Change scope: Added a VLM-first model-card recognition framework while preserving offline fallback verification.
+- Files changed:
+  - `app.py`
+  - `config.py`
+  - `data/manifest.json`
+  - `data/model_cards/part_0001.json`
+  - `services/model_service.py`
+  - `services/vlm_client.py`
+  - `services/vlm_prompts.py`
+  - `services/vlm_signature.py`
+  - `services/model_card_builder.py`
+  - `services/model_card_matcher.py`
+  - `services/pair_judge.py`
+  - `services/recognition_pipeline.py`
+  - `scripts/build_model_cards.py`
+  - `scripts/verify_model_cards.py`
+  - `scripts/rebuild_all.py`
+  - `harness/test_cases.json`
+  - `harness/run_vlm_harness.py`
+  - `docs/STATE.md`
+- Reason for change: Upgrade the model library from an image/feature library into a structure model-card library, with GLM-4V-Flash hooks for query signatures and pair judging, model-card ranking, API integration, and targeted VLM harness coverage for `scan_test_05` and `scan_test_06`.
+- Verification commands run:
+  - `conda run -n base python -m py_compile app.py config.py services\vlm_client.py services\vlm_prompts.py services\vlm_signature.py services\model_card_builder.py services\model_card_matcher.py services\pair_judge.py services\recognition_pipeline.py services\model_service.py scripts\build_model_cards.py scripts\verify_model_cards.py scripts\rebuild_all.py harness\run_vlm_harness.py`
+  - `conda run -n base python scripts\verify_model_cards.py`
+  - `conda run -n base python harness\run_vlm_harness.py`
+  - `conda run -n base python harness\run_harness.py`
+  - `conda run -n base python harness\test_all_images.py`
+  - `conda run -n base python scripts\build_model_cards.py`
+  - Direct conda base Python API batch POST to `/api/recognize` for `part_0001.png`, `scan_test_05.png`, and `scan_test_06.png`
+- Result: PASS. `part_0001.png` matched `part_0001`; `scan_test_05.png` and `scan_test_06.png` were rejected by model-card/pair-judge scoring. Existing backend harness and all-image traditional matcher tests still pass.
+- Known risks:
+  - Live GLM calls were not executed during verification to avoid persisting or exposing the provided API key; the framework reads `ZHIPU_API_TOKEN` only from the environment.
+  - Without `ZHIPU_API_TOKEN`, query signature and pair judge use OpenCV fallback signals, so scores are deterministic but not true VLM reasoning.
+  - `build_model_cards.py` skips existing `verified=true` cards by default; use `--force` only when intentionally rebuilding and re-reviewing cards.
+  - No `Makefile` exists, so `make verify-major` is still unavailable and was skipped.
+- Next suggested step: Set `ZHIPU_API_TOKEN` in the local shell, run `python harness/run_vlm_harness.py`, review GLM output quality, then expand `data/model_cards/` as new model references are added.

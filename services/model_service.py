@@ -1,61 +1,63 @@
 import json
 from pathlib import Path
+
 from fastapi import Request
 
 
-# 常量
 MANIFEST_PATH = Path("data/manifest.json")
-MATCH_THRESHOLD = 0.50  # 单模型匹配阈值
+MODEL_CARDS_DIR = Path("data/model_cards")
+MATCH_THRESHOLD = 0.50
 
 
 def load_manifest() -> list:
-    """
-    加载模型清单
-
-    Returns:
-        模型信息列表
-    """
     if not MANIFEST_PATH.exists():
-        raise FileNotFoundError(f"模型清单文件不存在: {MANIFEST_PATH}")
+        raise FileNotFoundError(f"model manifest not found: {MANIFEST_PATH}")
+    with MANIFEST_PATH.open("r", encoding="utf-8") as file:
+        return json.load(file)
 
-    with open(MANIFEST_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+
+def get_model_by_id(model_id: str, manifest: list | None = None) -> dict | None:
+    manifest = manifest if manifest is not None else load_manifest()
+    return next((item for item in manifest if item.get("model_id") == model_id), None)
 
 
-def build_file_url(request: Request, relative_url: str) -> str:
-    """
-    将相对 URL 转换为完整可访问 URL
+def load_model_card(model_id: str) -> dict | None:
+    path = MODEL_CARDS_DIR / f"{model_id}.json"
+    if not path.exists():
+        return None
+    with path.open("r", encoding="utf-8") as file:
+        return json.load(file)
 
-    Args:
-        request: FastAPI 请求对象
-        relative_url: 相对 URL，如 /static/models/part_0001/test2.gltf
 
-    Returns:
-        完整 URL，如 http://127.0.0.1:8000/static/models/part_0001/test2.gltf
-    """
+def load_model_cards(verified_only: bool = True) -> list[dict]:
+    cards = []
+    for item in load_manifest():
+        card_path = Path(item.get("model_card") or MODEL_CARDS_DIR / f"{item['model_id']}.json")
+        if not card_path.exists():
+            continue
+        with card_path.open("r", encoding="utf-8") as file:
+            card = json.load(file)
+        if verified_only and card.get("verified") is not True:
+            continue
+        cards.append(card)
+    return cards
+
+
+def build_file_url(request: Request, relative_url: str | None) -> str | None:
+    if not relative_url:
+        return None
     base_url = str(request.base_url).rstrip("/")
     return f"{base_url}{relative_url}"
 
 
 def get_models(request: Request) -> list:
-    """
-    获取所有模型信息（带完整 URL）
-
-    Args:
-        request: FastAPI 请求对象
-
-    Returns:
-        模型信息列表
-    """
-    manifest = load_manifest()
     models = []
-
-    for item in manifest:
+    for item in load_manifest():
         models.append({
             "model_id": item["model_id"],
             "name": item["name"],
             "category": item["category"],
-            "gltf_url": build_file_url(request, item["gltf_url"])
+            "model_card": item.get("model_card", f"data/model_cards/{item['model_id']}.json"),
+            "gltf_url": build_file_url(request, item.get("gltf_url")),
         })
-
     return models
