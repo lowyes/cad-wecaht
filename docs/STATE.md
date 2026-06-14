@@ -246,3 +246,42 @@ Do not mark a task complete without reporting verification results.
   - `build_model_cards.py` skips existing `verified=true` cards by default; use `--force` only when intentionally rebuilding and re-reviewing cards.
   - No `Makefile` exists, so `make verify-major` is still unavailable and was skipped.
 - Next suggested step: Set `ZHIPU_API_TOKEN` in the local shell, run `python harness/run_vlm_harness.py`, review GLM output quality, then expand `data/model_cards/` as new model references are added.
+
+### 2026-06-14 14:27:41 +08:00
+
+- Agent/tool used: Codex via local PowerShell, `apply_patch`, conda `base`.
+- Change scope: Cleaned obsolete debug/experiment code and standardized the verification harness for future Claude/Codex agents.
+- Files changed:
+  - `.gitignore`
+  - `AGENTS.md`
+  - `Makefile`
+  - `harness/README.md`
+  - `harness/verify_major.py`
+  - `harness/run_harness.py`
+  - `services/vlm_client.py`
+  - `docs/STATE.md`
+  - Removed obsolete tracked scripts:
+    - `check_full.py`
+    - `check_npz_match.py`
+    - `check_type.py`
+    - `test_all_images.py`
+    - `test_drawings.py`
+    - `test_noise.py`
+    - `harness/debug_homography.py`
+    - `harness/generate_test_images.py`
+    - `harness/test_false_positive.py`
+    - `harness/visualize_scan_matches.py`
+  - Removed local generated/experimental artifacts:
+    - `data/glm_recognition/`
+    - `experiments/`
+    - `debug_scan05.py`
+- Reason for change: Reduce confusing duplicate entrypoints, remove one-off experiment/debug scripts, and give future agents a single major verification command: `make verify-major` or `conda run -n base python harness\verify_major.py`.
+- Verification commands run:
+  - `conda run -n base python harness\verify_major.py`
+  - `make verify-major`
+- Result: PASS. The major harness passed py_compile, model-card verification, VLM/model-card harness, traditional all-image regression, and backend closed-loop API/static model checks.
+- Known risks:
+  - `README.md` still has unrelated local modifications that were not part of this cleanup and were intentionally not reverted.
+  - `VLM_DISABLE_REMOTE=1` is the default for major verification; live GLM checks require `make verify-major-live-vlm` or `harness\verify_major.py --live-vlm`.
+  - FastAPI TestClient still emits the existing Starlette deprecation warning about `httpx`.
+- Next suggested step: Keep future algorithm experiments outside the main repo path or under ignored scratch folders until they are ready to become maintained code.

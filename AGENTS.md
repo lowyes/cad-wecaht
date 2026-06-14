@@ -26,5 +26,8 @@ Do not mark a task complete without reporting verification results.
 
 - The default Python runtime is conda `base`.
 - Prefer `conda run -n base python ...` when running verification from automation.
-- The harness validates the existing closed loop only: reference image, feature index, API recognition, and glTF/static model URLs.
+- For major changes, run `make verify-major` when `make` is available, or `conda run -n base python harness\verify_major.py`.
+- The major harness defaults to offline VLM fallback mode by setting `VLM_DISABLE_REMOTE=1`; use `--live-vlm` only when the user explicitly asks to spend API calls.
+- The harness validates both the model-card/VLM-first path and the existing closed loop: reference image, feature index, API recognition, and glTF/static model URLs.
 - Do not change the recognition algorithm unless the task explicitly asks for that.
+- Never write API keys into source files, docs, logs, screenshots, model cards, or commits; use environment variables only.

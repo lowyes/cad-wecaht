@@ -22,7 +22,10 @@ env/
 
 # Generated diagnostics and regenerated test artifacts
 data/debug/
+data/glm_recognition/
 data/test_images/generated/
+experiments/
+debug_*.py
 
 # Local environment files
 .env

@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import mimetypes
+import os
 import time
 import urllib.error
 import urllib.request
@@ -61,6 +62,9 @@ def call_glm_with_two_images(query_image_path: str, ref_image_path: str, prompt:
 
 
 def _call_glm(content: list[dict[str, Any]], max_retries: int = 2) -> dict[str, Any] | None:
+    if os.environ.get("VLM_DISABLE_REMOTE") == "1":
+        return None
+
     if not ZHIPU_API_TOKEN:
         return None
 
