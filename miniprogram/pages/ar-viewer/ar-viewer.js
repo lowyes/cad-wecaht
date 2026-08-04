@@ -3,7 +3,16 @@ const {
   AR_TARGETS,
   getFcodeByModelId,
 } = require('../../config/model_fcode_map');
+const {
+  createTrackingStabilizer,
+} = require('../../utils/tracking_stabilizer');
 const SUPPORTED_MODEL_IDS = AR_TARGETS.map((target) => target.modelId);
+const SUPPORTED_MODEL_ID_SET = new Set(SUPPORTED_MODEL_IDS);
+const MAX_RENDER_PIXEL_RATIO = 2;
+const TRACK_ACQUIRE_DELAY_MS = 250;
+const TRACK_LOSS_GRACE_MS = 800;
+const STARTUP_SLOW_MS = 12000;
+const STARTUP_FAILURE_MS = 25000;
 
 Page({
   data: {
@@ -36,7 +45,10 @@ Page({
       : wx.getSystemInfoSync();
     const viewWidth = windowInfo.windowWidth;
     const viewHeight = windowInfo.windowHeight;
-    const pixelRatio = Math.min(windowInfo.pixelRatio || 2, 3);
+    const pixelRatio = Math.min(
+      windowInfo.pixelRatio || 2,
+      MAX_RENDER_PIXEL_RATIO,
+    );
 
     this.setData({
       viewWidth,
@@ -46,12 +58,18 @@ Page({
     });
 
     if (options.autostart === '1') {
-      setTimeout(() => this.startAR(), 80);
+      this.autostartTimer = setTimeout(() => {
+        this.autostartTimer = null;
+        this.startAR();
+      }, 80);
     }
   },
 
   startAR() {
     if (this.data.arStarted) return;
+
+    this.initializeTrackingStabilizer();
+    this.clearStartupTimers();
 
     this.setData({
       arStarted: true,
@@ -67,26 +85,60 @@ Page({
       statusText: '正在初始化 AR，请保持手机稳定',
     });
 
-    clearTimeout(this.startupTimer);
     this.startupTimer = setTimeout(() => {
-      if (this.data.isLoading) {
+      if (!this.data.arReady) {
         this.setData({
           startupSlow: true,
           loadingText: '相机连接时间较长，请确认已允许相机权限',
           statusText: '仍在等待相机，请检查权限或重新启动 AR',
         });
       }
-    }, 12000);
+    }, STARTUP_SLOW_MS);
+
+    this.startupFailureTimer = setTimeout(() => {
+      if (!this.data.arReady) {
+        this.showError('AR 启动超时，请检查相机权限后重新启动');
+      }
+    }, STARTUP_FAILURE_MS);
+  },
+
+  onShow() {
+    if (!this.shouldResumeAR) return;
+
+    this.shouldResumeAR = false;
+    const resume = () => this.startAR();
+    if (wx.nextTick) {
+      wx.nextTick(resume);
+    } else {
+      setTimeout(resume, 0);
+    }
+  },
+
+  onHide() {
+    clearTimeout(this.autostartTimer);
+    this.autostartTimer = null;
+    if (!this.data.arStarted) return;
+
+    this.shouldResumeAR = true;
+    this.disposeRuntimeState();
+    this.setData({
+      arStarted: false,
+      arReady: false,
+      isLoading: false,
+      recognizedModelId: '',
+      statusText: '返回后将重新连接相机',
+    });
   },
 
   onUnload() {
-    clearTimeout(this.startupTimer);
-    clearTimeout(this.launchDismissTimer);
-    this.activeTargets = null;
+    this.shouldResumeAR = false;
+    this.disposeRuntimeState();
   },
 
   handleSceneReady() {
-    this.activeTargets = new Set();
+    if (this.trackingStabilizer) {
+      this.trackingStabilizer.reset({ emit: false });
+    }
     this.setData({
       launchProgress: Math.max(this.data.launchProgress, 28),
       statusText: '场景已启动，正在开启摄像头',
@@ -95,9 +147,12 @@ Page({
   },
 
   handleARReady() {
-    clearTimeout(this.startupTimer);
+    if (!this.data.arStarted) return;
+    this.clearStartupTimers();
     this.setData({
       arReady: true,
+      hasError: false,
+      errorMessage: '',
       launchProgress: 100,
       loadingText: 'AR 视野已就绪',
       statusText: '请将摄像头对准完整的二维工程图',
@@ -110,7 +165,7 @@ Page({
     }, 380);
   },
 
-  handleAssetsProgress({ detail }) {
+  handleAssetsProgress({ detail } = {}) {
     const payload = detail && (detail.value || detail);
     const progress = payload && payload.progress;
     if (typeof progress === 'number') {
@@ -127,6 +182,7 @@ Page({
   },
 
   handleAssetsLoaded() {
+    if (!this.data.arStarted) return;
     this.setData({
       modelReady: true,
       modelWarning: '',
@@ -136,36 +192,24 @@ Page({
   },
 
   handleModelLoaded() {
+    if (!this.data.arStarted) return;
     this.setData({
       modelReady: true,
-      modelWarning: '',
     });
   },
 
-  handleTrackerChange({ detail }) {
+  handleTrackerChange({ detail = {} } = {}) {
     const modelId = detail.modelId;
-    const recognized = detail.active;
-
-    if (!this.activeTargets) this.activeTargets = new Set();
-    if (recognized) {
-      this.activeTargets.add(modelId);
-    } else {
-      this.activeTargets.delete(modelId);
+    if (!SUPPORTED_MODEL_ID_SET.has(modelId)) {
+      console.warn('[AR tracker] ignored unknown model:', modelId);
+      return;
     }
 
-    const activeModelId = recognized
-      ? modelId
-      : Array.from(this.activeTargets)[0] || '';
-
-    this.setData({
-      recognizedModelId: activeModelId,
-      statusText: activeModelId
-        ? `识别成功：${activeModelId}`
-        : '目标丢失，请重新对准完整工程图',
-    });
+    if (!this.trackingStabilizer) this.initializeTrackingStabilizer();
+    this.trackingStabilizer.update(modelId, detail.active);
   },
 
-  handleTrackerState({ detail }) {
+  handleTrackerState({ detail = {} } = {}) {
     if (detail.errorMessage) {
       this.setData({
         statusText: `识图跟踪器异常：${detail.errorMessage}`,
@@ -180,13 +224,57 @@ Page({
     }
   },
 
-  handleModelError({ detail }) {
+  handleModelError({ detail = {} } = {}) {
+    const modelId = detail.modelId || '';
+    const globalFailure = detail.globalFailure !== false;
+    const message = detail.message || '三维模型加载失败，识图功能仍可使用';
     this.setData({
-      modelReady: false,
-      modelWarning: detail.message || '三维模型加载失败，识图功能仍可使用',
+      modelReady: globalFailure ? false : this.data.modelReady,
+      modelWarning: modelId ? `${modelId}：${message}` : message,
       isLoading: false,
-      statusText: '本地识图可用，三维模型暂以定位方块显示',
+      statusText: modelId
+        ? `${modelId} 模型暂以定位方块显示，识图仍可用`
+        : '本地识图可用，三维模型暂以定位方块显示',
     });
+  },
+
+  initializeTrackingStabilizer() {
+    if (this.trackingStabilizer) this.trackingStabilizer.dispose();
+    this.trackingStabilizer = createTrackingStabilizer({
+      acquireDelayMs: TRACK_ACQUIRE_DELAY_MS,
+      lossGraceMs: TRACK_LOSS_GRACE_MS,
+      onChange: (modelId) => this.applyStableTarget(modelId),
+    });
+  },
+
+  applyStableTarget(modelId) {
+    if (this.data.recognizedModelId === modelId) return;
+    this.setData({
+      recognizedModelId: modelId,
+      statusText: modelId
+        ? `识别成功：${modelId}`
+        : '目标丢失，请重新对准完整工程图',
+    });
+  },
+
+  clearStartupTimers() {
+    clearTimeout(this.startupTimer);
+    clearTimeout(this.startupFailureTimer);
+    this.startupTimer = null;
+    this.startupFailureTimer = null;
+  },
+
+  disposeRuntimeState() {
+    clearTimeout(this.autostartTimer);
+    this.autostartTimer = null;
+    this.clearStartupTimers();
+    clearTimeout(this.launchDismissTimer);
+    this.launchDismissTimer = null;
+    this.gestureState = null;
+    if (this.trackingStabilizer) {
+      this.trackingStabilizer.dispose();
+      this.trackingStabilizer = null;
+    }
   },
 
   scaleUp() {
@@ -309,6 +397,7 @@ Page({
   },
 
   showError(message) {
+    this.clearStartupTimers();
     this.setData({
       isLoading: false,
       hasError: true,

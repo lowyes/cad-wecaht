@@ -45,7 +45,8 @@
       bind:ar-tracker-state="handleTrackerState"
     >
       <xr-gltf
-        wx:if="{{item.hasModel && modelReady}}"
+        wx:if="{{item.hasModel && item.modelUsable && modelReady}}"
+        data-model-id="{{item.modelId}}"
         model="{{item.modelAssetId}}"
         position="0 0.04 0"
         rotation="{{modelRotationX}} {{modelRotationY}} 0"

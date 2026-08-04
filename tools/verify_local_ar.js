@@ -121,4 +121,22 @@ for (const filePath of runtimeSources) {
   }
 }
 
+const arViewerSource = fs.readFileSync(
+  path.join(miniprogramRoot, 'pages', 'ar-viewer', 'ar-viewer.js'),
+  'utf8',
+);
+check(
+  arViewerSource.includes('createTrackingStabilizer'),
+  'AR 页面接入跟踪防抖状态机',
+);
+check(
+  /\bonHide\s*\(\)/.test(arViewerSource) &&
+    /\bonShow\s*\(\)/.test(arViewerSource),
+  'AR 页面具备隐藏与恢复生命周期处理',
+);
+check(
+  arViewerSource.includes('STARTUP_FAILURE_MS'),
+  'AR 启动具备终止超时与重试出口',
+);
+
 process.exitCode = failed ? 1 : 0;

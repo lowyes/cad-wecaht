@@ -1,5 +1,26 @@
 # Development Log
 
+## 2026-08-04 20:10:39 +08:00 — AR 跟踪稳定性第一阶段
+
+- Agent/tool used: Codex、Node.js、项目本地 AR 自检。
+- Change scope: 为 XR-FRAME Marker 跟踪增加应用层防抖、生命周期恢复、启动故障出口和单模型降级隔离。
+- Files changed:
+  - `miniprogram/utils/tracking_stabilizer.js`：新增独立状态机；命中持续 250ms 后确认，丢失保留 800ms，锁定当前目标，并在当前目标真正丢失后切换至已确认的备用目标。
+  - `miniprogram/pages/ar-viewer/ar-viewer.js`：接入稳定状态机；忽略未知目标；页面隐藏时释放 AR 运行状态，返回时重新挂载；增加 12 秒慢启动提示和 25 秒终止超时；渲染像素比上限从 3 降为 2。
+  - `miniprogram/components/ar-marker-scene/index.js`、`index.wxml`：记录每个模型的可用状态，单个 GLB 解析失败时仅将对应目标降级为定位方块。
+  - `tools/test_tracking_stabilizer.js`、`tools/verify_local_ar.js`：增加防抖、短暂丢失、重复丢失事件、目标锁定、备用目标切换、定时器释放和稳定性接线检查。
+- Reason for change: 原实现直接把每次 `ar-tracker-switch` 映射到界面状态，轻微抖动或单帧遮挡会造成模型闪现、立即丢失或多目标来回切换；页面从其他小程序返回后也没有明确的相机重建策略。
+- Verification commands run:
+  - `node tools/test_tracking_stabilizer.js`。
+  - `node tools/verify_local_ar.js`。
+  - `node --check`（全部 `miniprogram/` 与 `tools/` JavaScript）。
+  - PowerShell `ConvertFrom-Json`（全部小程序 JSON）。
+  - 使用模拟 `Page`/`Component` 加载页面和组件，确认生命周期及逐模型状态可初始化。
+  - `git diff --check`。
+- Result: PASS。6 个跟踪稳定性场景全部通过；完整 Marker、GLB、迪威映射和运行时依赖自检通过；JS/JSON 语法通过；页面及组件模拟加载通过。
+- Known risks: XR-FRAME 的相机姿态和实际 Marker 识别仍由微信客户端提供，桌面测试只能验证应用层状态变化，无法替代真机对模型抖动、暗光、反光和不同手机性能的验证。250ms/800ms 是保守初值，应根据真机丢失频率调整。
+- Next suggested step: 在安卓低端机、安卓高端机和 iPhone 上分别测试每个目标 10 次，记录首次锁定耗时、每分钟丢失次数、错误切换次数和从迪威返回后的恢复成功率；之后再加入 Marker 相似度入库门禁。
+
 ## 2026-07-25 21:40:00 +08:00 — UI v2 深空玻璃设计系统
 
 - Agent/tool used: WorkBuddy, Node.js。

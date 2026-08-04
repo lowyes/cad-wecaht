@@ -19,7 +19,10 @@ Component({
   data: {
     arReady: false,
     modelReady: false,
-    targets: AR_TARGETS,
+    targets: AR_TARGETS.map((target) => ({
+      ...target,
+      modelUsable: target.hasModel,
+    })),
   },
 
   methods: {
@@ -45,20 +48,35 @@ Component({
       this.triggerEvent('assets-loaded');
     },
 
-    handleGltfLoaded() {
-      this.triggerEvent('model-loaded');
+    handleGltfLoaded(event) {
+      this.triggerEvent('model-loaded', {
+        modelId: event.currentTarget.dataset.modelId,
+      });
     },
 
     handleAssetsError(event) {
+      this.setData({ modelReady: false });
       console.error('[ar-marker-scene] asset load failed:', event);
       this.triggerEvent('model-error', {
+        globalFailure: true,
         message: '三维模型资源加载失败，已切换为定位方块',
       });
     },
 
     handleGltfError(event) {
+      const modelId = event.currentTarget.dataset.modelId;
+      const targetIndex = this.data.targets.findIndex(
+        (target) => target.modelId === modelId,
+      );
+      if (targetIndex >= 0) {
+        this.setData({
+          [`targets[${targetIndex}].modelUsable`]: false,
+        });
+      }
       console.error('[ar-marker-scene] glTF parse failed:', event);
       this.triggerEvent('model-error', {
+        modelId,
+        globalFailure: false,
         message: '三维模型解析失败，已切换为定位方块',
       });
     },
