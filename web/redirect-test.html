@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>fcode 提取与小程序跳转测试</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f5f5;
+      padding: 20px;
+      color: #333;
+      line-height: 1.6;
+    }
+    .container { max-width: 640px; margin: 0 auto; }
+    h1 { font-size: 20px; margin-bottom: 16px; color: #1a1a1a; }
+    .card {
+      background: #fff;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #888;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .value {
+      font-family: "SF Mono", Consolas, Monaco, monospace;
+      font-size: 14px;
+      word-break: break-all;
+      background: #f7f7f7;
+      padding: 8px 10px;
+      border-radius: 4px;
+      display: block;
+    }
+    .value.highlight { background: #e6f7ff; color: #1890ff; font-weight: 600; }
+    .value.success { background: #f6ffed; color: #52c41a; font-weight: 600; }
+    .value.danger { background: #fff2f0; color: #ff4d4f; font-weight: 600; }
+    .label { font-size: 12px; color: #999; margin-bottom: 4px; }
+    .test-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .test-links a {
+      display: inline-block;
+      padding: 6px 12px;
+      background: #1890ff;
+      color: #fff;
+      text-decoration: none;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+    .test-links a:hover { background: #40a9ff; }
+    .modal-mask {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+    }
+    .modal-mask.show { display: flex; }
+    .modal {
+      background: #fff;
+      border-radius: 12px;
+      width: 80%;
+      max-width: 320px;
+      overflow: hidden;
+    }
+    .modal-title {
+      font-size: 16px;
+      font-weight: 600;
+      text-align: center;
+      padding: 20px 16px 8px;
+    }
+    .modal-content {
+      font-size: 14px;
+      color: #666;
+      text-align: center;
+      padding: 0 16px 20px;
+    }
+    .modal-btn {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      text-align: center;
+      font-size: 16px;
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+    }
+    .modal-btn.primary { background: #07c160; color: #fff; }
+    .modal-btn.cancel { background: #f5f5f5; color: #333; border-top: 1px solid #eee; }
+    .log {
+      font-family: "SF Mono", Consolas, Monaco, monospace;
+      font-size: 12px;
+      background: #1a1a1a;
+      color: #0f0;
+      padding: 12px;
+      border-radius: 4px;
+      max-height: 200px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>fcode 提取与小程序跳转测试</h1>
+
+    <!-- 环境检测 -->
+    <div class="card">
+      <div class="card-title">1. 环境检测</div>
+      <div class="label">UserAgent</div>
+      <span class="value" id="ua"></span>
+      <div class="label" style="margin-top:8px;">是否移动端</div>
+      <span class="value" id="isMobile"></span>
+      <div class="label" style="margin-top:8px;">是否微信环境</div>
+      <span class="value" id="isWechat"></span>
+    </div>
+
+    <!-- URL 解析 -->
+    <div class="card">
+      <div class="card-title">2. URL 解析</div>
+      <div class="label">当前完整 URL</div>
+      <span class="value" id="currentUrl"></span>
+      <div class="label" style="margin-top:8px;">Pathname</div>
+      <span class="value" id="pathname"></span>
+      <div class="label" style="margin-top:8px;">提取到的 fcode（模型 ID）</div>
+      <span class="value highlight" id="fcode">—</span>
+    </div>
+
+    <!-- 生成的跳转链接 -->
+    <div class="card">
+      <div class="card-title">3. 生成的跳转链接</div>
+      <div class="label">目标小程序页面</div>
+      <span class="value" id="targetPath"></span>
+      <div class="label" style="margin-top:8px;">query 参数（编码前）</div>
+      <span class="value" id="queryRaw"></span>
+      <div class="label" style="margin-top:8px;">query 参数（编码后）</div>
+      <span class="value" id="queryEncoded"></span>
+      <div class="label" style="margin-top:8px;">完整 weixin:// 跳转链接</div>
+      <span class="value success" id="weixinUrl">—</span>
+    </div>
+
+    <!-- 测试不同 URL -->
+    <div class="card">
+      <div class="card-title">4. 模拟测试不同 URL</div>
+      <p style="font-size:13px;color:#999;margin-bottom:8px;">
+        点击下方链接模拟访问不同页面（通过 hash 切换路径）：
+      </p>
+      <div class="test-links">
+        <a href="#/models/part_0001">/models/part_0001</a>
+        <a href="#/models/ABC123">/models/ABC123</a>
+        <a href="#/models/test-model-456">/models/test-model-456</a>
+        <a href="#/home">/home（普通页）</a>
+        <a href="#/models/">/models/（空 fcode）</a>
+        <a href="#/">/（根路径）</a>
+      </div>
+    </div>
+
+    <!-- 调试日志 -->
+    <div class="card">
+      <div class="card-title">5. 调试日志</div>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+
+  <!-- 弹窗 -->
+  <div class="modal-mask" id="modalMask">
+    <div class="modal">
+      <div class="modal-title">前往微信小程序</div>
+      <div class="modal-content" id="modalContent">即将打开微信小程序</div>
+      <a href="#" class="modal-btn primary" id="modalConfirmBtn">前往</a>
+      <button class="modal-btn cancel" id="modalCancelBtn">取消</button>
+    </div>
+  </div>
+
+  <script>
+    // ===== 配置 =====
+    var MINI_PROGRAM_APP_ID = 'wx7e378d28b47ec0ec';
+    var MINI_PROGRAM_HOME_PATH = 'pages/main/index';
+    var MINI_PROGRAM_MODEL_PATH = 'pages/model/view';
+
+    // ===== 日志 =====
+    function log(msg) {
+      var el = document.getElementById('log');
+      var time = new Date().toLocaleTimeString();
+      el.textContent += '[' + time + '] ' + msg + '\n';
+      el.scrollTop = el.scrollHeight;
+      console.log('[fcode-test]', msg);
+    }
+
+    // ===== 环境检测 =====
+    function detectEnvironment() {
+      var ua = navigator.userAgent || '';
+      var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+      var isWechat = /MicroMessenger/i.test(ua);
+
+      document.getElementById('ua').textContent = ua;
+      document.getElementById('isMobile').textContent = isMobile ? '是 ✓' : '否';
+      document.getElementById('isMobile').className = 'value ' + (isMobile ? 'success' : 'danger');
+      document.getElementById('isWechat').textContent = isWechat ? '是 ✓' : '否';
+      document.getElementById('isWechat').className = 'value ' + (isWechat ? 'success' : 'danger');
+
+      log('环境检测: isMobile=' + isMobile + ', isWechat=' + isWechat);
+      return { isMobile: isMobile, isWechat: isWechat };
+    }
+
+    // ===== 从 URL 提取 fcode =====
+    // 支持 /models/{fcode} 格式
+    function extractFcode(pathname) {
+      log('开始提取 fcode, pathname="' + pathname + '"');
+
+      // 匹配 /models/{fcode}，fcode 不能为空
+      // 排除 /models/ 后面直接跟斜杠或为空的情况
+      var match = pathname.match(/^\/models\/([^\/\?#]+)/);
+      if (match && match[1]) {
+        var fcode = match[1];
+        log('提取成功: fcode="' + fcode + '"');
+        return fcode;
+      }
+
+      log('不匹配 /models/{fcode} 格式，fcode 为空');
+      return null;
+    }
+
+    // ===== 生成跳转链接 =====
+    function buildWeixinUrl(fcode) {
+      var path, query;
+
+      if (fcode) {
+        // 有 fcode：跳转模型详情页，带 3D 模式参数
+        path = MINI_PROGRAM_MODEL_PATH;
+        // query 编码前: c={fcode}&mode=3d
+        var queryStr = 'c=' + fcode + '&mode=3d';
+        query = encodeURIComponent(queryStr);
+        log('生成模型详情页链接: path=' + path + ', query(原始)=' + queryStr + ', query(编码)=' + query);
+      } else {
+        // 无 fcode：回退到首页
+        path = MINI_PROGRAM_HOME_PATH;
+        query = '';
+        log('fcode 为空，回退到首页: path=' + path);
+      }
+
+      // 拼接 weixin://dl/business/ 链接
+      var url = 'weixin://dl/business/?appid=' + MINI_PROGRAM_APP_ID
+              + '&path=' + encodeURIComponent(path)
+              + '&query=' + query;
+
+      return { url: url, path: path, queryRaw: fcode ? ('c=' + fcode + '&mode=3d') : '(空)', queryEncoded: query };
+    }
+
+    // ===== 显示弹窗 =====
+    function showModal(weixinUrl, fcode) {
+      var mask = document.getElementById('modalMask');
+      var content = document.getElementById('modalContent');
+      var confirmBtn = document.getElementById('modalConfirmBtn');
+
+      if (fcode) {
+        content.textContent = '即将打开微信小程序，查看模型 ' + fcode + ' 的 3D 展示';
+      } else {
+        content.textContent = '即将打开微信小程序首页';
+      }
+
+      confirmBtn.href = weixinUrl;
+      mask.classList.add('show');
+      log('显示弹窗, 按钮 href=' + weixinUrl);
+    }
+
+    function hideModal() {
+      document.getElementById('modalMask').classList.remove('show');
+    }
+
+    document.getElementById('modalCancelBtn').addEventListener('click', hideModal);
+
+    // ===== 主流程 =====
+    function run() {
+      log('========== 开始执行 ==========');
+
+      // 环境检测
+      var env = detectEnvironment();
+
+      // 获取当前路径（支持 hash 路由模拟）
+      var hash = window.location.hash || '';
+      var pathname;
+      if (hash && hash.indexOf('#/') === 0) {
+        // 用 hash 模拟 pathname，便于测试
+        pathname = hash.substring(1); // 去掉 #
+      } else {
+        pathname = window.location.pathname;
+      }
+
+      document.getElementById('currentUrl').textContent = window.location.href;
+      document.getElementById('pathname').textContent = pathname;
+
+      // 提取 fcode
+      var fcode = extractFcode(pathname);
+      document.getElementById('fcode').textContent = fcode || '(空 - 将跳转首页)';
+      document.getElementById('fcode').className = 'value ' + (fcode ? 'highlight' : 'danger');
+
+      // 生成跳转链接
+      var result = buildWeixinUrl(fcode);
+      document.getElementById('targetPath').textContent = result.path;
+      document.getElementById('queryRaw').textContent = result.queryRaw;
+      document.getElementById('queryEncoded').textContent = result.queryEncoded || '(空)';
+      document.getElementById('weixinUrl').textContent = result.url;
+
+      // 判断是否需要跳转（移动端或微信环境）
+      if (env.isMobile || env.isWechat) {
+        log('当前为移动端或微信环境，触发弹窗跳转');
+        showModal(result.url, fcode);
+      } else {
+        log('非移动端/非微信环境，仅展示信息不自动弹窗');
+        // 桌面端也提供手动触发按钮
+        var manualBtn = document.createElement('button');
+        manualBtn.textContent = '手动触发弹窗（桌面端测试）';
+        manualBtn.style.cssText = 'display:block;width:100%;padding:12px;margin-top:12px;background:#1890ff;color:#fff;border:none;border-radius:4px;font-size:14px;cursor:pointer;';
+        manualBtn.onclick = function() { showModal(result.url, fcode); };
+        var card3 = document.querySelectorAll('.card')[2];
+        card3.appendChild(manualBtn);
+      }
+
+      log('========== 执行结束 ==========\n');
+    }
+
+    // 页面加载执行
+    run();
+
+    // hash 变化时重新执行（支持点击测试链接）
+    window.addEventListener('hashchange', function() {
+      document.getElementById('log').textContent = '';
+      hideModal();
+      run();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,80 @@
+<xr-scene
+  id="xrScene"
+  class="scene"
+  ar-system="modes:Marker"
+  bind:ready="handleSceneReady"
+  bind:ar-ready="handleARReady"
+  bind:log="handleSceneLog"
+>
+  <xr-assets
+    bind:progress="handleAssetsProgress"
+    bind:loaded="handleAssetsLoaded"
+    bind:error="handleAssetsError"
+  >
+    <!-- DATASET_MANAGER:ASSETS_START -->
+    <xr-asset-load
+      type="gltf"
+      asset-id="part-0001-model"
+      src="/assets/models/part_0001/model_plain.glb"
+      options="ignoreError: -1"
+    />
+    <xr-asset-load
+      type="gltf"
+      asset-id="part-0002-model"
+      src="/assets/models/part_0002/model_plain.glb"
+      options="ignoreError: -1"
+    />
+    <xr-asset-load
+      type="gltf"
+      asset-id="part-0003-model"
+      src="/assets/models/part_0003/model_plain.glb"
+      options="ignoreError: -1"
+    />
+    <!-- DATASET_MANAGER:ASSETS_END -->
+  </xr-assets>
+
+  <xr-node wx:if="{{arReady}}">
+    <xr-ar-tracker
+      wx:for="{{targets}}"
+      wx:key="modelId"
+      id="tracker-{{item.modelId}}"
+      mode="Marker"
+      src="{{item.markerSrc}}"
+      data-model-id="{{item.modelId}}"
+      bind:ar-tracker-switch="handleTrackerSwitch"
+      bind:ar-tracker-state="handleTrackerState"
+    >
+      <xr-gltf
+        wx:if="{{item.hasModel && modelReady}}"
+        model="{{item.modelAssetId}}"
+        position="0 0.04 0"
+        rotation="{{modelRotationX}} {{modelRotationY}} 0"
+        scale="{{modelScale}} {{modelScale}} {{modelScale}}"
+        bind:gltf-loaded="handleGltfLoaded"
+        bind:gltf-error="handleGltfError"
+      />
+      <xr-mesh
+        wx:else
+        geometry="cube"
+        position="0 0.04 0"
+        scale="0.12 0.04 0.08"
+        uniforms="u_baseColorFactor:{{item.placeholderColor}}"
+      />
+    </xr-ar-tracker>
+
+    <xr-camera
+      id="camera"
+      node-id="camera"
+      background="ar"
+      is-ar-camera
+      near="0.01"
+      far="100"
+    />
+  </xr-node>
+
+  <xr-node node-id="lights">
+    <xr-light type="ambient" color="0.92 0.96 1" intensity="0.55" />
+    <xr-light type="directional" rotation="38 -35 0" color="1 0.9 0.78" intensity="2.6" />
+    <xr-light type="directional" rotation="-30 145 0" color="0.45 0.7 1" intensity="1.15" />
+  </xr-node>
+</xr-scene>

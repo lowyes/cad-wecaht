@@ -3,7 +3,7 @@
 .vscode/
 .idea/
 .claude/
-backend/.claude/
+.workbuddy/
 
 # Python cache/build artifacts
 __pycache__/
@@ -30,13 +30,9 @@ yarn-error.log*
 # WeChat developer local settings
 project.private.config.json
 
-# Generated backend diagnostics
-backend/data/debug/
-backend/data/glm_recognition/
-backend/data/test_images/generated/
-backend/experiments/
-backend/debug_*.py
-
 # Local Codex run logs
 .codex-logs/
 .codex-tmp/
+
+# Local AR dataset manager backups
+dataset_backups/

@@ -1,0 +1,234 @@
+<view class="page">
+  <view class="intro-screen" wx:if="{{!arStarted}}">
+    <view class="launch-glow glow-one"></view>
+    <view class="launch-glow glow-two"></view>
+    <view class="intro-grid-bg"></view>
+
+    <view class="launch-brand">
+      <view class="launch-logo">AR</view>
+      <view class="launch-brand-copy">
+        <text class="launch-brand-name">CAD VISION</text>
+        <text class="launch-brand-subtitle">本地工程图识别</text>
+      </view>
+      <view class="brand-badge">LOCAL</view>
+    </view>
+
+    <view class="intro-copy">
+      <text class="intro-title">让工程图跃然眼前</text>
+      <text class="intro-description">
+        对准二维目标图，即刻查看三维模型 · 图片不上传
+      </text>
+    </view>
+
+    <view class="launch-main intro-visual">
+      <view class="launch-orbit orbit-one"></view>
+      <view class="launch-orbit orbit-two"></view>
+      <view class="launch-scanner">
+        <view class="launch-grid"></view>
+        <view class="launch-corner corner-a"></view>
+        <view class="launch-corner corner-b"></view>
+        <view class="launch-corner corner-c"></view>
+        <view class="launch-corner corner-d"></view>
+        <view class="launch-laser"></view>
+        <view class="launch-center-mark">
+          <view class="center-dot"></view>
+        </view>
+      </view>
+    </view>
+
+    <view class="intro-meta">
+      <view class="intro-meta-item">
+        <text class="intro-meta-value">{{supportedTargetCount}}</text>
+        <text class="intro-meta-label">本地目标</text>
+      </view>
+      <view class="intro-meta-divider"></view>
+      <view class="intro-meta-item">
+        <text class="intro-meta-value">0</text>
+        <text class="intro-meta-label">后端请求</text>
+      </view>
+      <view class="intro-meta-divider"></view>
+      <view class="intro-meta-item">
+        <text class="intro-meta-value">GLB</text>
+        <text class="intro-meta-label">三维模型</text>
+      </view>
+    </view>
+
+    <view class="intro-start-button" hover-class="intro-start-button-hover" bindtap="startAR">
+      <view class="intro-start-icon">
+        <view class="intro-start-dot"></view>
+      </view>
+      <text>开启 AR 扫描</text>
+      <text class="intro-start-arrow">›</text>
+    </view>
+
+    <view class="intro-footnote">
+      <view class="local-note-dot"></view>
+      <text>识别全程在手机本地完成 · 无需联网</text>
+    </view>
+  </view>
+
+  <ar-marker-scene
+    wx:if="{{arStarted}}"
+    class="xr-scene"
+    width="{{renderWidth}}"
+    height="{{renderHeight}}"
+    style="width:{{viewWidth}}px;height:{{viewHeight}}px;"
+    model-scale="{{modelScale}}"
+    model-rotation-x="{{modelRotationX}}"
+    model-rotation-y="{{modelRotationY}}"
+    bind:scene-ready="handleSceneReady"
+    bind:ar-ready="handleARReady"
+    bind:assets-progress="handleAssetsProgress"
+    bind:assets-loaded="handleAssetsLoaded"
+    bind:model-loaded="handleModelLoaded"
+    bind:model-error="handleModelError"
+    bind:tracker-change="handleTrackerChange"
+    bind:tracker-state="handleTrackerState"
+  />
+
+  <view
+    wx:if="{{recognizedModelId}}"
+    class="gesture-layer"
+    bindtouchstart="handleGestureStart"
+    catchtouchmove="handleGestureMove"
+    bindtouchend="handleGestureEnd"
+    bindtouchcancel="handleGestureEnd"
+  ></view>
+
+  <view class="top-bar" wx:if="{{arStarted}}">
+    <view class="back-button" hover-class="glass-hover" bindtap="restartAR">↻</view>
+    <view class="title-group">
+      <text class="title">本地 AR 识图</text>
+      <text class="model-name">
+        {{supportedTargetCount}} 个本地目标 · {{supportedModelsText}}
+      </text>
+    </view>
+    <view class="top-placeholder"></view>
+  </view>
+
+  <view
+    class="status-card {{recognizedModelId ? 'recognized' : (arReady ? 'ready' : '')}}"
+    wx:if="{{arStarted}}"
+  >
+    <view class="status-dot {{recognizedModelId ? 'recognized' : (arReady ? 'ready' : '')}}"></view>
+    <view class="status-copy">
+      <text class="status-text">{{statusText}}</text>
+      <text class="recognized-id" wx:if="{{recognizedModelId}}">
+        {{recognizedModelId}}
+      </text>
+    </view>
+  </view>
+
+  <view class="scan-frame" wx:if="{{arReady && !recognizedModelId}}">
+    <view class="corner top-left"></view>
+    <view class="corner top-right"></view>
+    <view class="corner bottom-left"></view>
+    <view class="corner bottom-right"></view>
+    <view class="scan-laser"></view>
+    <view class="scan-tip">
+      <text class="scan-tip-text">请将完整的原始工程图放入取景框</text>
+    </view>
+  </view>
+
+  <cover-view class="launch-screen" wx:if="{{arStarted && isLoading}}">
+    <cover-view class="launch-glow glow-one"></cover-view>
+    <cover-view class="launch-glow glow-two"></cover-view>
+
+    <cover-view class="launch-brand">
+      <cover-view class="launch-logo">AR</cover-view>
+      <cover-view class="launch-brand-copy">
+        <cover-view class="launch-brand-name">CAD VISION</cover-view>
+        <cover-view class="launch-brand-subtitle">本地工程图识别</cover-view>
+      </cover-view>
+    </cover-view>
+
+    <cover-view class="launch-main">
+      <cover-view class="launch-orbit orbit-one"></cover-view>
+      <cover-view class="launch-orbit orbit-two"></cover-view>
+      <cover-view class="launch-scanner">
+        <cover-view class="launch-grid"></cover-view>
+        <cover-view class="launch-corner corner-a"></cover-view>
+        <cover-view class="launch-corner corner-b"></cover-view>
+        <cover-view class="launch-corner corner-c"></cover-view>
+        <cover-view class="launch-corner corner-d"></cover-view>
+        <cover-view class="launch-laser"></cover-view>
+        <cover-view class="launch-center-mark">
+          <cover-view class="center-dot"></cover-view>
+        </cover-view>
+      </cover-view>
+    </cover-view>
+
+    <cover-view class="launch-copy">
+      <cover-view class="launch-title">正在启动本地 AR</cover-view>
+      <cover-view class="launch-description">{{loadingText}}</cover-view>
+    </cover-view>
+
+    <cover-view class="launch-progress">
+      <cover-view class="launch-progress-track">
+        <cover-view
+          class="launch-progress-value"
+          style="width: {{launchProgress}}%;"
+        ></cover-view>
+      </cover-view>
+      <cover-view class="launch-steps">
+        <cover-view class="launch-step {{launchProgress >= 28 ? 'active' : ''}}">
+          场景
+        </cover-view>
+        <cover-view class="launch-step {{launchProgress >= 60 ? 'active' : ''}}">
+          相机
+        </cover-view>
+        <cover-view class="launch-step {{launchProgress >= 94 ? 'active' : ''}}">
+          模型
+        </cover-view>
+      </cover-view>
+    </cover-view>
+
+    <cover-view class="launch-local-note">
+      <cover-view class="local-note-dot"></cover-view>
+      <cover-view>识别在手机本地完成，图片不会上传</cover-view>
+    </cover-view>
+
+    <cover-view
+      class="launch-retry"
+      wx:if="{{startupSlow}}"
+      bindtap="restartAR"
+    >
+      重新启动 AR
+    </cover-view>
+  </cover-view>
+
+  <view class="error-card" wx:if="{{arStarted && hasError}}">
+    <text class="error-title">AR启动失败</text>
+    <text class="error-message">{{errorMessage}}</text>
+    <view class="error-action" bindtap="restartAR">重新启动 AR</view>
+  </view>
+
+  <view class="controls" wx:if="{{arStarted && !hasError}}">
+    <view class="tool-row" wx:if="{{recognizedModelId}}">
+      <view class="tool-button" hover-class="glass-hover" bindtap="scaleDown">缩小</view>
+      <view class="tool-button" hover-class="glass-hover" bindtap="rotateModel">旋转</view>
+      <view class="tool-button" hover-class="glass-hover" bindtap="scaleUp">放大</view>
+      <view class="tool-button" hover-class="glass-hover" bindtap="resetModel">复位</view>
+    </view>
+    <view
+      class="diwei-button"
+      hover-class="diwei-button-hover"
+      wx:if="{{recognizedModelId}}"
+      bindtap="goToDiweiMiniProgram"
+    >
+      <text class="diwei-button-label">打开迪威模型</text>
+      <text class="diwei-button-arrow">›</text>
+    </view>
+    <view class="hint-card">
+      <text wx:if="{{modelWarning}}">
+        {{modelWarning}}
+      </text>
+      <text wx:elif="{{recognizedModelId}}">
+        单指拖动可旋转模型，双指捏合可缩放
+      </text>
+      <text wx:else>
+        识别与跟踪均在手机本地完成，无需启动后端
+      </text>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AR 数据集管理器</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">CAD VISION · 本地工具</p>
+          <h1>AR 数据集管理器</h1>
+          <p class="hero-copy">
+            导入原始工程图和 GLB，自动完成校验、备份与目标库更新。
+          </p>
+        </div>
+        <button class="verify-button" id="verifyButton" type="button">
+          <span class="button-dot"></span>
+          一键完整校验
+        </button>
+      </header>
+
+      <section class="summary-grid" aria-label="数据集概况">
+        <article class="summary-card">
+          <span>当前目标</span>
+          <strong id="targetCount">—</strong>
+          <small>本地 Marker</small>
+        </article>
+        <article class="summary-card">
+          <span>三维模型</span>
+          <strong id="modelCount">—</strong>
+          <small>GLB 2.0</small>
+        </article>
+        <article class="summary-card">
+          <span>运行方式</span>
+          <strong>离线</strong>
+          <small>无需识别后端</small>
+        </article>
+      </section>
+
+      <main class="workspace">
+        <section class="panel form-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="section-label">目标录入</p>
+              <h2 id="formTitle">添加新零件</h2>
+            </div>
+            <button class="text-button hidden" id="cancelEdit" type="button">
+              取消编辑
+            </button>
+          </div>
+
+          <form id="targetForm">
+            <div class="field-grid">
+              <label class="field">
+                <span>零件编号</span>
+                <input
+                  id="modelId"
+                  name="modelId"
+                  placeholder="例如 part_0004"
+                  pattern="part_[0-9]{4,}"
+                  autocomplete="off"
+                  required
+                />
+                <small>统一使用 part_ 加至少四位数字</small>
+              </label>
+              <label class="field">
+                <span>迪威 fcode</span>
+                <input
+                  id="fcode"
+                  name="fcode"
+                  placeholder="请输入模型 fcode"
+                  autocomplete="off"
+                  required
+                />
+                <small>识别成功后的三维详情跳转码</small>
+              </label>
+            </div>
+
+            <div class="upload-grid">
+              <label class="upload-card" id="imageDrop">
+                <input id="imageFile" type="file" accept=".png,image/png" />
+                <span class="upload-index">01</span>
+                <strong>原始电子工程图</strong>
+                <span class="upload-hint">点击选择或拖入 PNG</span>
+                <span class="file-status" id="imageStatus">尚未选择</span>
+                <img id="imagePreview" alt="工程图预览" class="hidden" />
+              </label>
+
+              <label class="upload-card" id="modelDrop">
+                <input
+                  id="modelFile"
+                  type="file"
+                  accept=".glb,model/gltf-binary"
+                />
+                <span class="upload-index">02</span>
+                <strong>对应三维模型</strong>
+                <span class="upload-hint">点击选择或拖入 GLB</span>
+                <span class="file-status" id="modelStatus">尚未选择</span>
+                <div class="model-glyph" aria-hidden="true">
+                  <i></i><i></i><i></i>
+                </div>
+              </label>
+            </div>
+
+            <div class="form-footer">
+              <label class="color-field">
+                <span>模型失败占位色</span>
+                <input id="colorPicker" type="color" value="#1fb891" />
+              </label>
+              <button class="primary-button" id="submitButton" type="submit">
+                校验并加入目标库
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel list-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="section-label">目标清单</p>
+              <h2>已加入的零件</h2>
+            </div>
+            <button class="icon-button" id="refreshButton" type="button" title="刷新">
+              ↻
+            </button>
+          </div>
+          <div id="targetList" class="target-list">
+            <div class="loading-row">正在读取目标库…</div>
+          </div>
+        </section>
+      </main>
+
+      <footer>
+        每次修改前自动备份。添加完成后，请使用微信开发者工具重新编译并发布。
+      </footer>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <dialog id="resultDialog">
+      <div class="dialog-heading">
+        <div>
+          <p class="section-label">检查结果</p>
+          <h2 id="dialogTitle">完整校验</h2>
+        </div>
+        <button id="closeDialog" class="icon-button" type="button">×</button>
+      </div>
+      <pre id="verifyOutput"></pre>
+    </dialog>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

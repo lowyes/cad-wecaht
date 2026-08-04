@@ -1,18 +1,13 @@
 {
   "pages": [
-    "pages/home/home",
-    "pages/result/result",
-    "pages/model-viewer/model-viewer",
-    "pages/model-native/model-native",
-    "pages/model-list/model-list",
-    "pages/debug/debug"
+    "pages/ar-viewer/ar-viewer"
   ],
   "window": {
-    "backgroundColor": "#F8FAFC",
-    "backgroundTextStyle": "dark",
-    "navigationBarBackgroundColor": "#FFFFFF",
-    "navigationBarTitleText": "工程制图辅助学习",
-    "navigationBarTextStyle": "black",
+    "backgroundColor": "#030610",
+    "backgroundTextStyle": "light",
+    "navigationBarBackgroundColor": "#030610",
+    "navigationBarTitleText": "本地 AR 识图",
+    "navigationBarTextStyle": "white",
     "navigationStyle": "custom"
   },
   "sitemapLocation": "sitemap.json",

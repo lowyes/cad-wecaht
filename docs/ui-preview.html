@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAD VISION · 深空玻璃 UI 预览</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    min-height: 100vh;
+    padding: 48px 32px 64px;
+    background: #eef1f6;
+    color: #0f172a;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  }
+  .doc-header { max-width: 1400px; margin: 0 auto 36px; }
+  .doc-header h1 { font-size: 26px; font-weight: 800; letter-spacing: 2px; }
+  .doc-header p { margin-top: 8px; color: #64748b; font-size: 14px; }
+  .swatches { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+  .swatch { display: flex; align-items: center; gap: 8px; padding: 6px 14px 6px 6px; border: 1px solid #dde3ec; border-radius: 999px; background: #fff; font-size: 12px; color: #475569; }
+  .swatch i { width: 22px; height: 22px; border-radius: 50%; display: block; }
+
+  .phones { max-width: 1400px; margin: 0 auto; display: flex; gap: 32px; flex-wrap: wrap; justify-content: center; }
+  .phone-wrap { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .phone-label { font-size: 13px; font-weight: 700; color: #334155; letter-spacing: 1px; }
+  .phone-sub { font-size: 11px; color: #94a3b8; margin-top: -8px; }
+
+  .phone {
+    position: relative;
+    width: 300px;
+    height: 640px;
+    overflow: hidden;
+    border-radius: 40px;
+    border: 8px solid #111827;
+    background: #030610;
+    box-shadow: 0 24px 64px rgba(15, 23, 42, 0.28);
+    color: #f1f5f9;
+    font-size: 12px;
+  }
+
+  /* ===== 共用 ===== */
+  .glow { position: absolute; border-radius: 50%; opacity: .5; filter: blur(14px); animation: glowFloat 5s ease-in-out infinite alternate; }
+  .glow-one { top: 6%; right: -76px; width: 184px; height: 184px; background: rgba(34,211,238,.16); }
+  .glow-two { bottom: 2%; left: -84px; width: 200px; height: 200px; background: rgba(139,92,246,.15); animation-delay: -2s; }
+
+  .brand { position: relative; z-index: 2; width: 100%; display: flex; align-items: center; }
+  .logo { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(103,232,249,.5); border-radius: 10px; color: #e0f2fe; font-size: 10px; font-weight: 800; letter-spacing: 1px; background: linear-gradient(145deg, rgba(14,165,233,.4), rgba(139,92,246,.3)); box-shadow: 0 0 0 2px rgba(34,211,238,.06), 0 6px 18px rgba(14,165,233,.22); }
+  .brand-copy { display: flex; flex-direction: column; margin-left: 10px; }
+  .brand-name { font-size: 11px; font-weight: 800; letter-spacing: 3px; }
+  .brand-sub { margin-top: 3px; color: #94a3b8; font-size: 8px; letter-spacing: 1.5px; }
+  .badge { margin-left: auto; padding: 3px 9px; border: 1px solid rgba(103,232,249,.35); border-radius: 999px; color: #67e8f9; font-size: 7px; letter-spacing: 2px; background: rgba(34,211,238,.08); }
+
+  .scanner-zone { position: relative; z-index: 2; width: 172px; height: 172px; flex: none; display: flex; align-items: center; justify-content: center; }
+  .orbit { position: absolute; border: 1px solid rgba(56,189,248,.16); border-radius: 50%; }
+  .orbit-one { inset: 0; border-top-color: rgba(34,211,238,.8); animation: orbitSpin 7s linear infinite; }
+  .orbit-two { inset: 15px; border-right-color: rgba(139,92,246,.75); animation: orbitSpinReverse 5.5s linear infinite; }
+  .scanner { position: relative; width: 112px; height: 112px; overflow: hidden; border: 1px solid rgba(148,163,184,.14); border-radius: 19px; background: rgba(8,18,38,.72); box-shadow: inset 0 0 24px rgba(34,211,238,.08), 0 12px 36px rgba(0,0,0,.4); }
+  .scan-grid { position: absolute; inset: 0; opacity: .3; background-image: linear-gradient(rgba(56,189,248,.16) 1px, transparent 1px), linear-gradient(90deg, rgba(56,189,248,.16) 1px, transparent 1px); background-size: 14px 14px; }
+  .scan-corner { position: absolute; width: 22px; height: 22px; border-color: #22d3ee; border-style: solid; filter: drop-shadow(0 0 3px rgba(34,211,238,.8)); }
+  .c-a { top: 9px; left: 9px; border-width: 2px 0 0 2px; border-radius: 7px 0 0 0; }
+  .c-b { top: 9px; right: 9px; border-width: 2px 2px 0 0; border-radius: 0 7px 0 0; }
+  .c-c { bottom: 9px; left: 9px; border-width: 0 0 2px 2px; border-radius: 0 0 0 7px; }
+  .c-d { right: 9px; bottom: 9px; border-width: 0 2px 2px 0; border-radius: 0 0 7px 0; }
+  .laser { position: absolute; top: 12px; left: 10px; right: 10px; height: 2px; border-radius: 2px; background: linear-gradient(90deg, transparent, #67e8f9 18%, #22d3ee 82%, transparent); box-shadow: 0 0 8px rgba(34,211,238,.95); animation: laserScan 2.4s ease-in-out infinite; }
+  .center-mark { position: absolute; top: 50%; left: 50%; width: 29px; height: 29px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(103,232,249,.4); border-radius: 50%; transform: translate(-50%,-50%); animation: centerPulse 1.8s ease-in-out infinite; }
+  .center-dot { width: 5px; height: 5px; border-radius: 50%; background: #67e8f9; box-shadow: 0 0 9px rgba(103,232,249,.95); }
+
+  /* ===== 屏 1：启动页 ===== */
+  .intro { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; padding: 30px 19px 14px; background: radial-gradient(circle at 50% 30%, rgba(14,116,144,.3), transparent 46%), radial-gradient(circle at 12% 88%, rgba(139,92,246,.14), transparent 40%), linear-gradient(165deg, #030610 0%, #0a1230 52%, #040818 100%); }
+  .intro-grid { position: absolute; inset: 0; opacity: .5; background-image: linear-gradient(rgba(56,189,248,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(56,189,248,.045) 1px, transparent 1px); background-size: 21px 21px; }
+  .intro-copy { z-index: 2; display: flex; flex-direction: column; align-items: center; margin-top: 16px; text-align: center; animation: fadeUp .6s ease .08s both; }
+  .intro-title { font-size: 20px; font-weight: 800; letter-spacing: 3px; }
+  .intro-desc { margin-top: 6px; color: #8ea3bd; font-size: 9px; line-height: 1.6; letter-spacing: 1px; }
+  .intro .scanner-zone { width: 150px; height: 150px; margin-top: 18px; animation: fadeUp .6s ease .16s both; }
+  .intro .scanner { width: 100px; height: 100px; }
+  .meta { z-index: 2; width: 100%; display: flex; align-items: center; justify-content: center; margin-top: 18px; padding: 10px 5px; border: 1px solid rgba(148,163,184,.14); border-radius: 13px; background: rgba(148,163,184,.07); box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 8px 20px rgba(2,6,18,.35); animation: fadeUp .6s ease .24s both; }
+  .meta-item { width: 30%; display: flex; flex-direction: column; align-items: center; }
+  .meta-value { color: #e0f2fe; font-size: 12px; font-weight: 800; letter-spacing: 1px; }
+  .meta-label { margin-top: 3px; color: #64748b; font-size: 7px; letter-spacing: 1px; }
+  .meta-divider { width: 1px; height: 18px; background: linear-gradient(180deg, transparent, rgba(148,163,184,.3), transparent); }
+  .cta { z-index: 2; width: 100%; height: 40px; display: flex; align-items: center; margin-top: 14px; padding: 0 13px; border-radius: 999px; color: #fff; font-size: 12px; font-weight: 700; letter-spacing: 1.5px; background: linear-gradient(135deg, #0ea5e9 0%, #3b82f6 52%, #8b5cf6 100%); box-shadow: 0 8px 24px rgba(59,130,246,.4), inset 0 1px 0 rgba(255,255,255,.3); animation: fadeUp .6s ease .32s both, ctaBreath 2.8s ease-in-out .8s infinite; }
+  .cta-icon { width: 21px; height: 21px; display: flex; align-items: center; justify-content: center; margin-right: 8px; border: 1px solid rgba(255,255,255,.4); border-radius: 7px; background: rgba(255,255,255,.14); }
+  .cta-dot { width: 6px; height: 6px; border: 1.5px solid #fff; border-radius: 50%; box-shadow: 0 0 6px rgba(255,255,255,.85); }
+  .cta-arrow { margin-left: auto; font-size: 20px; font-weight: 300; line-height: 1; }
+  .footnote { z-index: 2; display: flex; align-items: center; margin-top: auto; color: #64748b; font-size: 8px; letter-spacing: 1px; animation: fadeUp .6s ease .4s both; }
+  .note-dot { width: 4px; height: 4px; margin-right: 5px; border-radius: 50%; background: #34d399; box-shadow: 0 0 5px rgba(52,211,153,.9); }
+
+  /* ===== 屏 2：加载页 ===== */
+  .loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; padding: 34px 22px 20px; background: radial-gradient(circle at 50% 32%, rgba(14,116,144,.28), transparent 44%), linear-gradient(165deg, #030610 0%, #0a1230 52%, #040818 100%); }
+  .loading .scanner-zone { margin-top: 46px; }
+  .load-copy { z-index: 2; display: flex; flex-direction: column; align-items: center; margin-top: 20px; }
+  .load-title { font-size: 15px; font-weight: 700; letter-spacing: 2px; }
+  .load-desc { min-height: 14px; margin-top: 6px; color: #a5b4c7; font-size: 9px; letter-spacing: .5px; }
+  .progress { z-index: 2; width: 100%; margin-top: 16px; }
+  .track { height: 3px; overflow: hidden; border-radius: 999px; background: rgba(148,163,184,.16); }
+  .track i { display: block; height: 100%; width: 66%; border-radius: inherit; background: linear-gradient(90deg, #0ea5e9, #22d3ee, #8b5cf6); box-shadow: 0 0 7px rgba(34,211,238,.85); }
+  .steps { display: flex; justify-content: space-between; margin-top: 7px; }
+  .step { color: #475569; font-size: 8px; letter-spacing: 2px; }
+  .step.active { color: #a5f3fc; }
+  .load-note { z-index: 2; display: flex; align-items: center; margin-top: auto; padding: 7px 11px; border: 1px solid rgba(148,163,184,.14); border-radius: 999px; color: #94a3b8; font-size: 8px; background: rgba(8,14,30,.5); }
+
+  /* ===== 屏 3/4：AR 相机层 ===== */
+  .camera-view { position: absolute; inset: 0; }
+  .camera-view svg { width: 100%; height: 100%; }
+  .topbar { position: absolute; top: 14px; left: 10px; right: 10px; z-index: 5; display: flex; align-items: center; padding: 6px 8px; border: 1px solid rgba(148,163,184,.14); border-radius: 999px; background: rgba(8,14,30,.62); box-shadow: 0 5px 16px rgba(2,6,18,.45); }
+  .round-btn { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(148,163,184,.18); border-radius: 50%; color: #bae6fd; font-size: 15px; background: rgba(148,163,184,.1); }
+  .topbar-title { flex: 1; display: flex; flex-direction: column; align-items: center; }
+  .topbar-title b { font-size: 11px; letter-spacing: 2px; }
+  .topbar-title span { margin-top: 2px; color: #64748b; font-size: 7px; letter-spacing: .5px; }
+  .topbar-space { width: 26px; }
+
+  .status-pill { position: absolute; top: 64px; left: 50%; z-index: 5; display: flex; align-items: center; padding: 7px 12px; border: 1px solid rgba(148,163,184,.16); border-radius: 999px; background: rgba(8,14,30,.66); box-shadow: 0 4px 15px rgba(2,6,18,.4); transform: translateX(-50%); white-space: nowrap; }
+  .status-pill.recognized { border-color: rgba(34,211,238,.55); box-shadow: 0 0 0 2px rgba(34,211,238,.08), 0 4px 16px rgba(34,211,238,.22); }
+  .s-dot { width: 5px; height: 5px; margin-right: 7px; border-radius: 50%; background: #fbbf24; animation: dotPulse 1.6s ease-in-out infinite; }
+  .s-dot.ready { background: #34d399; box-shadow: 0 0 7px rgba(52,211,153,.9); }
+  .s-dot.recognized { background: #22d3ee; box-shadow: 0 0 8px rgba(34,211,238,1); }
+  .s-text { font-size: 9px; letter-spacing: .5px; }
+  .s-id { margin-left: 6px; color: #67e8f9; font-family: monospace; font-size: 8px; letter-spacing: 1px; }
+
+  .ar-frame { position: absolute; top: 26%; left: 11%; z-index: 4; width: 78%; height: 38%; }
+  .ar-corner { position: absolute; width: 29px; height: 29px; border-color: #22d3ee; border-style: solid; filter: drop-shadow(0 0 4px rgba(34,211,238,.8)); animation: cornerBlink 2.2s ease-in-out infinite; }
+  .ar-tl { top: 0; left: 0; border-width: 2px 0 0 2px; border-radius: 7px 0 0 0; }
+  .ar-tr { top: 0; right: 0; border-width: 2px 2px 0 0; border-radius: 0 7px 0 0; }
+  .ar-bl { bottom: 0; left: 0; border-width: 0 0 2px 2px; border-radius: 0 0 0 7px; }
+  .ar-br { right: 0; bottom: 0; border-width: 0 2px 2px 0; border-radius: 0 0 7px 0; }
+  .ar-laser { position: absolute; top: 6%; left: 4%; right: 4%; height: 2px; border-radius: 2px; background: linear-gradient(90deg, transparent, #67e8f9 20%, #22d3ee 80%, transparent); box-shadow: 0 0 8px rgba(34,211,238,.9); animation: scanLaserMove 2.8s ease-in-out infinite; }
+  .ar-tip { position: absolute; bottom: -34px; left: 50%; transform: translateX(-50%); }
+  .ar-tip span { display: block; padding: 6px 12px; border: 1px solid rgba(148,163,184,.16); border-radius: 999px; color: #cbd5e1; font-size: 9px; white-space: nowrap; background: rgba(8,14,30,.6); }
+
+  .controls { position: absolute; right: 11px; bottom: 14px; left: 11px; z-index: 5; }
+  .tool-row { display: flex; justify-content: center; gap: 8px; margin-bottom: 9px; }
+  .tool-btn { min-width: 55px; padding: 8px 10px; border: 1px solid rgba(148,163,184,.18); border-radius: 999px; color: #e2e8f0; font-size: 9px; letter-spacing: 1px; text-align: center; background: rgba(8,14,30,.62); box-shadow: 0 3px 12px rgba(2,6,18,.38); }
+  .diwei { height: 37px; display: flex; align-items: center; justify-content: center; margin-bottom: 9px; border-radius: 999px; color: #fff; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; background: linear-gradient(135deg, #0ea5e9 0%, #3b82f6 52%, #8b5cf6 100%); box-shadow: 0 7px 18px rgba(59,130,246,.38), inset 0 1px 0 rgba(255,255,255,.28); animation: ctaBreath 2.8s ease-in-out infinite; }
+  .diwei i { margin-left: 5px; font-size: 17px; font-weight: 300; font-style: normal; line-height: 1; }
+  .hint { padding: 8px 11px; border: 1px solid rgba(148,163,184,.12); border-radius: 10px; color: #94a3b8; font-size: 9px; text-align: center; background: rgba(8,14,30,.5); }
+
+  .cube-overlay { position: absolute; top: 30%; left: 50%; z-index: 3; transform: translateX(-50%); animation: floatY 3s ease-in-out infinite; }
+
+  @keyframes orbitSpin { to { transform: rotate(360deg); } }
+  @keyframes orbitSpinReverse { to { transform: rotate(-360deg); } }
+  @keyframes laserScan { 0%,100% { opacity: .45; transform: translateY(0); } 50% { opacity: 1; transform: translateY(87px); } }
+  @keyframes centerPulse { 0%,100% { opacity: .58; transform: translate(-50%,-50%) scale(.88); } 50% { opacity: 1; transform: translate(-50%,-50%) scale(1.1); } }
+  @keyframes glowFloat { to { opacity: .75; transform: translate3d(10px,-13px,0) scale(1.1); } }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes ctaBreath { 0%,100% { box-shadow: 0 7px 18px rgba(59,130,246,.32), inset 0 1px 0 rgba(255,255,255,.28); } 50% { box-shadow: 0 8px 26px rgba(59,130,246,.52), inset 0 1px 0 rgba(255,255,255,.34); } }
+  @keyframes dotPulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
+  @keyframes cornerBlink { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
+  @keyframes scanLaserMove { 0%,100% { top: 5%; opacity: .5; } 50% { top: 92%; opacity: 1; } }
+  @keyframes floatY { 0%,100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(-8px); } }
+</style>
+</head>
+<body>
+  <div class="doc-header">
+    <h1>CAD VISION · 深空玻璃 UI v2</h1>
+    <p>本地 AR 工程图识别小程序 · 四屏视觉预览（与小程序端同一套设计系统）</p>
+    <div class="swatches">
+      <span class="swatch"><i style="background:#030610"></i>深空底 #030610</span>
+      <span class="swatch"><i style="background:#22d3ee"></i>青 #22D3EE</span>
+      <span class="swatch"><i style="background:#3b82f6"></i>蓝 #3B82F6</span>
+      <span class="swatch"><i style="background:#8b5cf6"></i>紫 #8B5CF6</span>
+      <span class="swatch"><i style="background:#34d399"></i>本地绿 #34D399</span>
+      <span class="swatch"><i style="background:linear-gradient(135deg,#0ea5e9,#3b82f6,#8b5cf6)"></i>主 CTA 渐变</span>
+    </div>
+  </div>
+
+  <div class="phones">
+    <!-- 屏 1：启动页 -->
+    <div class="phone-wrap">
+      <div class="phone-label">① 启动页</div>
+      <div class="phone-sub">入场元素依次上浮，CTA 呼吸光晕</div>
+      <div class="phone">
+        <div class="intro">
+          <div class="glow glow-one"></div>
+          <div class="glow glow-two"></div>
+          <div class="intro-grid"></div>
+          <div class="brand">
+            <div class="logo">AR</div>
+            <div class="brand-copy">
+              <span class="brand-name">CAD VISION</span>
+              <span class="brand-sub">本地工程图识别</span>
+            </div>
+            <span class="badge">LOCAL</span>
+          </div>
+          <div class="intro-copy">
+            <span class="intro-title">让工程图跃然眼前</span>
+            <span class="intro-desc">对准二维目标图，即刻查看三维模型 · 图片不上传</span>
+          </div>
+          <div class="scanner-zone">
+            <div class="orbit orbit-one"></div>
+            <div class="orbit orbit-two"></div>
+            <div class="scanner">
+              <div class="scan-grid"></div>
+              <div class="scan-corner c-a"></div>
+              <div class="scan-corner c-b"></div>
+              <div class="scan-corner c-c"></div>
+              <div class="scan-corner c-d"></div>
+              <div class="laser"></div>
+              <div class="center-mark"><div class="center-dot"></div></div>
+            </div>
+          </div>
+          <div class="meta">
+            <div class="meta-item"><span class="meta-value">3</span><span class="meta-label">本地目标</span></div>
+            <div class="meta-divider"></div>
+            <div class="meta-item"><span class="meta-value">0</span><span class="meta-label">后端请求</span></div>
+            <div class="meta-divider"></div>
+            <div class="meta-item"><span class="meta-value">GLB</span><span class="meta-label">三维模型</span></div>
+          </div>
+          <div class="cta">
+            <div class="cta-icon"><div class="cta-dot"></div></div>
+            开启 AR 扫描
+            <span class="cta-arrow">›</span>
+          </div>
+          <div class="footnote"><div class="note-dot"></div>识别全程在手机本地完成 · 无需联网</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 屏 2：加载页 -->
+    <div class="phone-wrap">
+      <div class="phone-label">② 加载页</div>
+      <div class="phone-sub">三阶段进度（场景 / 相机 / 模型）</div>
+      <div class="phone">
+        <div class="loading">
+          <div class="glow glow-one"></div>
+          <div class="glow glow-two"></div>
+          <div class="brand">
+            <div class="logo">AR</div>
+            <div class="brand-copy">
+              <span class="brand-name">CAD VISION</span>
+              <span class="brand-sub">本地工程图识别</span>
+            </div>
+          </div>
+          <div class="scanner-zone">
+            <div class="orbit orbit-one"></div>
+            <div class="orbit orbit-two"></div>
+            <div class="scanner">
+              <div class="scan-grid"></div>
+              <div class="scan-corner c-a"></div>
+              <div class="scan-corner c-b"></div>
+              <div class="scan-corner c-c"></div>
+              <div class="scan-corner c-d"></div>
+              <div class="laser"></div>
+              <div class="center-mark"><div class="center-dot"></div></div>
+            </div>
+          </div>
+          <div class="load-copy">
+            <span class="load-title">正在启动本地 AR</span>
+            <span class="load-desc">正在加载本地 AR 资源 72%</span>
+          </div>
+          <div class="progress">
+            <div class="track"><i></i></div>
+            <div class="steps">
+              <span class="step active">场景</span>
+              <span class="step active">相机</span>
+              <span class="step">模型</span>
+            </div>
+          </div>
+          <div class="load-note"><div class="note-dot"></div>识别在手机本地完成，图片不会上传</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 屏 3：AR 扫描态 -->
+    <div class="phone-wrap">
+      <div class="phone-label">③ AR 扫描态</div>
+      <div class="phone-sub">玻璃顶栏 + 状态胶囊 + 扫描框激光</div>
+      <div class="phone">
+        <div class="camera-view">
+          <svg viewBox="0 0 300 640" preserveAspectRatio="xMidYMid slice">
+            <rect width="300" height="640" fill="#1a2436"/>
+            <rect width="300" height="640" fill="url(#camGrid)" opacity="0.5"/>
+            <defs>
+              <pattern id="camGrid" width="30" height="30" patternUnits="userSpaceOnUse">
+                <path d="M 30 0 L 0 0 0 30" fill="none" stroke="#26334d" stroke-width="1"/>
+              </pattern>
+            </defs>
+            <g transform="translate(52,210) rotate(-2)">
+              <rect x="0" y="0" width="196" height="150" rx="4" fill="#dfe7f2" opacity="0.92"/>
+              <rect x="14" y="16" width="80" height="60" fill="none" stroke="#41506348" stroke-width="2"/>
+              <circle cx="54" cy="46" r="18" fill="none" stroke="#41506348" stroke-width="2"/>
+              <rect x="110" y="16" width="72" height="118" fill="none" stroke="#41506348" stroke-width="2"/>
+              <line x1="14" y1="96" x2="94" y2="96" stroke="#41506348" stroke-width="2"/>
+              <line x1="14" y1="116" x2="94" y2="116" stroke="#41506348" stroke-width="1.5"/>
+              <line x1="14" y1="16" x2="14" y2="134" stroke="#41506348" stroke-width="2"/>
+            </g>
+          </svg>
+        </div>
+        <div class="topbar">
+          <div class="round-btn">↻</div>
+          <div class="topbar-title"><b>本地 AR 识图</b><span>3 个本地目标 · part_0001 / part_0002 / part_0003</span></div>
+          <div class="topbar-space"></div>
+        </div>
+        <div class="status-pill">
+          <div class="s-dot ready"></div>
+          <span class="s-text">识图跟踪器已就绪，请对准完整的原始工程图</span>
+        </div>
+        <div class="ar-frame">
+          <div class="ar-corner ar-tl"></div>
+          <div class="ar-corner ar-tr"></div>
+          <div class="ar-corner ar-bl"></div>
+          <div class="ar-corner ar-br"></div>
+          <div class="ar-laser"></div>
+          <div class="ar-tip"><span>请将完整的原始工程图放入取景框</span></div>
+        </div>
+        <div class="controls">
+          <div class="hint">识别与跟踪均在手机本地完成，无需启动后端</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 屏 4：识别成功态 -->
+    <div class="phone-wrap">
+      <div class="phone-label">④ 识别成功态</div>
+      <div class="phone-sub">状态胶囊变青光 + 工具组 + 迪威 CTA</div>
+      <div class="phone">
+        <div class="camera-view">
+          <svg viewBox="0 0 300 640" preserveAspectRatio="xMidYMid slice">
+            <rect width="300" height="640" fill="#1a2436"/>
+            <rect width="300" height="640" fill="url(#camGrid2)" opacity="0.5"/>
+            <defs>
+              <pattern id="camGrid2" width="30" height="30" patternUnits="userSpaceOnUse">
+                <path d="M 30 0 L 0 0 0 30" fill="none" stroke="#26334d" stroke-width="1"/>
+              </pattern>
+            </defs>
+            <g transform="translate(52,210) rotate(-2)">
+              <rect x="0" y="0" width="196" height="150" rx="4" fill="#dfe7f2" opacity="0.92"/>
+              <rect x="14" y="16" width="80" height="60" fill="none" stroke="#41506348" stroke-width="2"/>
+              <circle cx="54" cy="46" r="18" fill="none" stroke="#41506348" stroke-width="2"/>
+              <rect x="110" y="16" width="72" height="118" fill="none" stroke="#41506348" stroke-width="2"/>
+              <line x1="14" y1="96" x2="94" y2="96" stroke="#41506348" stroke-width="2"/>
+            </g>
+          </svg>
+        </div>
+        <div class="cube-overlay">
+          <svg width="150" height="130" viewBox="0 0 150 130">
+            <g transform="translate(75,62)">
+              <polygon points="0,-42 42,-21 0,0 -42,-21" fill="#7dd3fc" opacity="0.95"/>
+              <polygon points="-42,-21 0,0 0,42 -42,21" fill="#38bdf8" opacity="0.95"/>
+              <polygon points="42,-21 0,0 0,42 42,21" fill="#0284c7" opacity="0.95"/>
+              <polygon points="0,-42 42,-21 0,0 -42,-21" fill="none" stroke="#e0f2fe" stroke-width="1.5"/>
+              <polygon points="-42,-21 0,0 0,42 -42,21" fill="none" stroke="#e0f2fe" stroke-width="1.5"/>
+              <polygon points="42,-21 0,0 0,42 42,21" fill="none" stroke="#e0f2fe" stroke-width="1.5"/>
+              <ellipse cx="0" cy="52" rx="46" ry="8" fill="#22d3ee" opacity="0.18"/>
+            </g>
+          </svg>
+        </div>
+        <div class="topbar">
+          <div class="round-btn">↻</div>
+          <div class="topbar-title"><b>本地 AR 识图</b><span>3 个本地目标 · part_0001 / part_0002 / part_0003</span></div>
+          <div class="topbar-space"></div>
+        </div>
+        <div class="status-pill recognized">
+          <div class="s-dot recognized"></div>
+          <span class="s-text">识别成功</span>
+          <span class="s-id">part_0001</span>
+        </div>
+        <div class="controls">
+          <div class="tool-row">
+            <div class="tool-btn">缩小</div>
+            <div class="tool-btn">旋转</div>
+            <div class="tool-btn">放大</div>
+            <div class="tool-btn">复位</div>
+          </div>
+          <div class="diwei">打开迪威模型<i>›</i></div>
+          <div class="hint">单指拖动可旋转模型，双指捏合可缩放</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

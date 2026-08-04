@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>工程制图AI识别 - TRAE AI创造力大赛初赛作品</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #070b14;
+  --bg2: #0f172a;
+  --surface: rgba(30, 41, 59, 0.6);
+  --ink: #f8fafc;
+  --muted: #94a3b8;
+  --rule: rgba(59, 130, 246, 0.15);
+  --accent: #3b82f6;
+  --accent2: #22c55e;
+  --accent3: #f59e0b;
+  --font-sans: -apple-system, "PingFang SC", "SF Pro Text", system-ui, sans-serif;
+}
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.7;
+}
+.hero {
+  position: relative;
+  padding: 80px 20px 60px;
+  overflow: hidden;
+  text-align: center;
+}
+.hero-bg {
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(59, 130, 246, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(59, 130, 246, 0.05) 1px, transparent 1px);
+  background-size: 30px 30px;
+  pointer-events: none;
+}
+.hero-glow {
+  position: absolute; top: -50%; left: 50%;
+  transform: translateX(-50%);
+  width: 600px; height: 600px;
+  background: radial-gradient(circle, rgba(59,130,246,0.15) 0%, transparent 70%);
+  pointer-events: none;
+}
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 20px;
+  background: rgba(59,130,246,0.1); border: 1px solid var(--rule);
+  color: var(--accent); font-size: 13px; font-weight: 500;
+  margin-bottom: 24px;
+}
+.badge-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+.hero h1 { font-size: clamp(32px, 6vw, 48px); font-weight: 700; letter-spacing: -0.5px; margin-bottom: 16px; }
+.hero p { font-size: 18px; color: var(--muted); max-width: 600px; margin: 0 auto 32px; }
+.hero-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 12px 24px; border-radius: 12px;
+  font-size: 15px; font-weight: 600; text-decoration: none;
+  transition: all 0.2s; cursor: pointer; border: none;
+}
+.btn-primary { background: linear-gradient(135deg, #1e3a8a, #3b82f6); color: #fff; box-shadow: 0 4px 20px rgba(59,130,246,0.25); }
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 28px rgba(59,130,246,0.35); }
+.btn-secondary { background: var(--surface); color: var(--ink); border: 1px solid var(--rule); }
+.btn-secondary:hover { border-color: rgba(59,130,246,0.4); }
+
+.container { max-width: 960px; margin: 0 auto; padding: 0 20px; }
+section { padding: 60px 0; }
+.section-title { font-size: 28px; font-weight: 700; margin-bottom: 16px; text-align: center; }
+.section-subtitle { text-align: center; color: var(--muted); margin-bottom: 48px; }
+
+.features { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+.feature-card {
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 16px;
+  padding: 24px; transition: all 0.2s;
+}
+.feature-card:hover { transform: translateY(-3px); border-color: rgba(59,130,246,0.3); }
+.feature-icon {
+  width: 44px; height: 44px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; margin-bottom: 16px;
+}
+.feature-icon.ai { background: rgba(59,130,246,0.1); }
+.feature-icon.view { background: rgba(34,197,94,0.1); }
+.feature-icon.mini { background: rgba(245,158,11,0.1); }
+.feature-card h3 { font-size: 18px; margin-bottom: 8px; }
+.feature-card p { font-size: 14px; color: var(--muted); line-height: 1.6; }
+
+.flow { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; }
+.flow-step {
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 14px;
+  padding: 20px; text-align: center; min-width: 140px;
+}
+.flow-step .num {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: linear-gradient(135deg, #1e3a8a, #3b82f6);
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 12px; font-weight: 700; font-size: 14px;
+}
+.flow-step h4 { font-size: 15px; margin-bottom: 4px; }
+.flow-step p { font-size: 12px; color: var(--muted); }
+.flow-arrow { color: var(--accent); font-size: 24px; }
+
+.screenshots { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; }
+.screen-card {
+  background: var(--bg2); border: 1px solid var(--rule); border-radius: 24px;
+  padding: 10px; overflow: hidden;
+}
+.screen-card img {
+  width: 100%; aspect-ratio: 9/19.5;
+  object-fit: cover; border-radius: 18px;
+  background: linear-gradient(135deg, #1e3a8a, #0f172a);
+}
+.screen-card figcaption { text-align: center; padding: 12px 0 6px; font-size: 13px; color: var(--muted); }
+
+.highlight {
+  background: linear-gradient(90deg, rgba(59,130,246,0.1), rgba(34,197,94,0.05));
+  border: 1px solid var(--rule); border-radius: 16px;
+  padding: 32px; text-align: center;
+}
+.highlight h3 { font-size: 22px; margin-bottom: 12px; }
+.highlight p { color: var(--muted); margin-bottom: 20px; }
+
+.tech-note {
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 16px;
+  padding: 24px; margin-top: 40px;
+}
+.tech-note h4 { font-size: 16px; margin-bottom: 12px; color: var(--ink); }
+.tech-note p { color: var(--muted); font-size: 14px; line-height: 1.8; }
+
+footer {
+  border-top: 1px solid var(--rule); padding: 40px 20px;
+  text-align: center; color: var(--muted); font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  .hero { padding: 60px 20px 40px; }
+  .hero h1 { font-size: 32px; }
+  section { padding: 40px 0; }
+  .flow { flex-direction: column; }
+  .flow-arrow { transform: rotate(90deg); }
+}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-glow"></div>
+  <div style="position: relative; z-index: 1;">
+    <img src="assets/hero-cover.jpg" alt="cover" style="width: min(100%, 720px); border-radius: 16px; margin-bottom: 28px; box-shadow: 0 20px 60px rgba(0,0,0,0.4);">
+    <div class="badge"><span class="badge-dot"></span> TRAE AI 创造力大赛 · 初赛作品</div>
+    <h1>工程制图 AI 辅助识别系统</h1>
+    <p>用手机拍摄二维工程图，AI 自动识别并匹配对应三维模型，让机械制图学习更直观、更高效。</p>
+    <div class="hero-actions">
+      <a href="#demo" class="btn btn-primary">查看界面</a>
+      <a href="#flow" class="btn btn-secondary">使用流程</a>
+    </div>
+  </div>
+</div>
+
+<section id="intro">
+  <div class="container">
+    <h2 class="section-title">解决什么问题</h2>
+    <p class="section-subtitle">工程制图学习中，三视图和三维模型之间缺少一座桥</p>
+    <div class="features">
+      <div class="feature-card">
+        <div class="feature-icon ai">📷</div>
+        <h3>拍照即识别</h3>
+        <p>支持拍照或相册上传工程图纸，AI 自动理解图纸中的三视图结构，无需手动标注尺寸。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon view">🧠</div>
+        <h3>智能匹配模型</h3>
+        <p>结合大模型视觉能力与图像特征匹配，从模型库中找出最可能对应的零件。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon mini">🧊</div>
+        <h3>3D 模型查看</h3>
+        <p>识别成功后可在本机或微信小程序中查看 3D 模型，360° 旋转缩放，建立直观认知。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="flow" style="background: var(--bg2);">
+  <div class="container">
+    <h2 class="section-title">使用流程</h2>
+    <p class="section-subtitle">简单四步，从图纸到 3D 模型</p>
+    <div class="flow">
+      <div class="flow-step">
+        <div class="num">1</div>
+        <h4>拍照/选图</h4>
+        <p>上传工程图纸</p>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">
+        <div class="num">2</div>
+        <h4>框选主体</h4>
+        <p>裁剪图纸区域</p>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">
+        <div class="num">3</div>
+        <h4>AI 识别</h4>
+        <p>匹配零件模型</p>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">
+        <div class="num">4</div>
+        <h4>查看 3D</h4>
+        <p>旋转缩放模型</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="demo">
+  <div class="container">
+    <h2 class="section-title">界面展示</h2>
+    <p class="section-subtitle">深色蓝图科技风 UI，专为工程制图场景设计</p>
+    <div class="screenshots">
+      <figure class="screen-card">
+        <img src="assets/demo-home.jpg" alt="首页" onerror="this.style.background='linear-gradient(135deg,#1e3a8a,#0f172a)'">
+        <figcaption>首页 · 扫描识别</figcaption>
+      </figure>
+      <figure class="screen-card">
+        <img src="assets/demo-crop.jpg" alt="裁剪页" onerror="this.style.background='linear-gradient(135deg,#1e3a8a,#0f172a)'">
+        <figcaption>裁剪 · 框选图纸</figcaption>
+      </figure>
+      <figure class="screen-card">
+        <img src="assets/demo-scan.jpg" alt="扫描中" onerror="this.style.background='linear-gradient(135deg,#1e3a8a,#0f172a)'">
+        <figcaption>AI 分析 · 识别中</figcaption>
+      </figure>
+      <figure class="screen-card">
+        <img src="assets/demo-result.jpg" alt="结果页" onerror="this.style.background='linear-gradient(135deg,#1e3a8a,#0f172a)'">
+        <figcaption>结果 · 查看 3D</figcaption>
+      </figure>
+    </div>
+
+    <div class="tech-note">
+      <h4>技术实现</h4>
+      <p>本项目基于微信小程序 + FastAPI 后端开发，使用 TRAE Builder 完成项目搭建和页面设计，TRAE Code 模式进行细节调优。识别流程结合大模型视觉能力与本地图像特征匹配，后端与前端已通过局域网环境完成联调，支持真机调试。</p>
+    </div>
+  </div>
+</section>
+
+<section id="cta">
+  <div class="container">
+    <div class="highlight">
+      <h3>世界很大，放手去造</h3>
+      <p>用 AI 降低工程制图的学习门槛，让每一个想法都能被看见。</p>
+      <div class="btn btn-primary" style="display:inline-flex;">TRAE AI 创造力大赛</div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>© 2026 工程制图 AI 辅助识别系统 · 参赛作品</p>
+  <p style="margin-top: 4px;">Powered by TRAE · WeChat Mini Program</p>
+</footer>
+
+</body>
+</html>

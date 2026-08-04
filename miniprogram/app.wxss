@@ -1,18 +1,16 @@
 page {
-  background-color: #F8FAFC;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background-color: #030610;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   font-size: 28rpx;
-  color: #0F172A;
+  color: #F8FAFC;
   box-sizing: border-box;
 }
 
 view, text, image {
   box-sizing: border-box;
-}
-
-.page-container {
-  min-height: 100vh;
-  background-color: #F8FAFC;
 }
 
 button {

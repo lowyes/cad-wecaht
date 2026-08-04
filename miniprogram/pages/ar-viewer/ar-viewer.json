@@ -1,0 +1,8 @@
+{
+  "navigationStyle": "custom",
+  "disableScroll": true,
+  "renderer": "webview",
+  "usingComponents": {
+    "ar-marker-scene": "../../components/ar-marker-scene/index"
+  }
+}

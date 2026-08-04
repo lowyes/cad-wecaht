@@ -1,13 +1,5 @@
 App({
   onLaunch() {
-    console.log('工程制图辅助学习小程序启动');
-  },
-  
-  onShow() {
-    console.log('小程序显示');
-  },
-  
-  onHide() {
-    console.log('小程序隐藏');
+    console.info('[CAD AR] 纯本地 AR 应用已启动');
   },
 });
