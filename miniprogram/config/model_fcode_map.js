@@ -14,7 +14,9 @@ const MODEL_FCODE_MAP = {
 const AR_TARGETS = [
   {
     modelId: "part_0001",
-    markerSrc: "/assets/markers/part_0001_ar_target.png",
+    markerSrc: "/assets/markers/part_0001_ar_target_candidate.png",
+    originalMarkerSrc: "/assets/markers/part_0001_ar_target.png",
+    markerVariant: "candidate-v1",
     modelSrc: "/assets/models/part_0001/model_plain.glb",
     modelAssetId: "part-0001-model",
     hasModel: true,

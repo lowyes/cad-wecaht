@@ -55,6 +55,14 @@ for (const target of AR_TARGETS) {
     markerIsPng && markerWidth >= 640 && markerHeight >= 480,
     `${target.modelId} 目标图有效（${markerWidth}x${markerHeight}）`,
   );
+  if (target.originalMarkerSrc) {
+    const originalMarkerPath = resolveMiniProgramPath(target.originalMarkerSrc);
+    check(
+      target.originalMarkerSrc !== target.markerSrc &&
+        fs.existsSync(originalMarkerPath),
+      `${target.modelId} 候选测试保留独立原图`,
+    );
+  }
 
   const modelIsGlb =
     model.subarray(0, 4).toString('ascii') === 'glTF' &&
@@ -131,12 +139,28 @@ check(
 );
 check(
   /\bonHide\s*\(\)/.test(arViewerSource) &&
-    /\bonShow\s*\(\)/.test(arViewerSource),
+    /\bonShow\s*\(\)/.test(arViewerSource) &&
+    arViewerSource.includes('runtimeActive'),
   'AR 页面具备隐藏与恢复生命周期处理',
 );
 check(
   arViewerSource.includes('STARTUP_FAILURE_MS'),
   'AR 启动具备终止超时与重试出口',
+);
+check(
+  arViewerSource.includes('reacquireDelayMs') &&
+    arViewerSource.includes('TRACK_REACQUIRE_WINDOW_MS'),
+  'AR 页面具备快速重捕获窗口',
+);
+check(
+  arViewerSource.includes('queueModelTransform') &&
+    arViewerSource.includes('TRANSFORM_UPDATE_INTERVAL_MS'),
+  'AR 手势更新具备合并节流',
+);
+check(
+  arViewerSource.includes('[AR performance]') &&
+    arViewerSource.includes('[AR tracking]'),
+  'AR 页面具备本地性能与跟踪诊断',
 );
 
 process.exitCode = failed ? 1 : 0;

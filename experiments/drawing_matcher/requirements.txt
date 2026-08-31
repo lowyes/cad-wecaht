@@ -1,0 +1,5 @@
+# Run with the repository's `math` conda environment.
+# The official LightGlue source is pinned for reproducible experiments.
+kornia==0.7.4
+kornia-rs==0.1.14
+https://codeload.github.com/cvg/LightGlue/zip/eb42fee2d71449efb0aa5c10549752b5d75384d8

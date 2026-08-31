@@ -7,14 +7,24 @@ function createTrackingStabilizer(options = {}) {
     0,
     options.lossGraceMs === undefined ? 800 : options.lossGraceMs,
   );
+  const reacquireDelayMs = Math.max(
+    0,
+    options.reacquireDelayMs === undefined ? 100 : options.reacquireDelayMs,
+  );
+  const reacquireWindowMs = Math.max(
+    0,
+    options.reacquireWindowMs === undefined ? 2500 : options.reacquireWindowMs,
+  );
   const schedule = options.schedule || setTimeout;
   const cancel = options.cancel || clearTimeout;
+  const now = options.now || Date.now;
   const onChange = options.onChange || (() => {});
 
   const activeTargets = new Set();
   const confirmedTargets = new Set();
   const confirmationOrder = [];
   const acquireTimers = new Map();
+  const recentlyLostAt = new Map();
   let lossTimer = null;
   let visibleModelId = '';
   let disposed = false;
@@ -70,15 +80,22 @@ function createTrackingStabilizer(options = {}) {
 
     if (confirmedTargets.has(modelId) || acquireTimers.has(modelId)) return;
 
+    const lostAt = recentlyLostAt.get(modelId);
+    const fastReacquire =
+      lostAt !== undefined && now() - lostAt <= reacquireWindowMs;
+    const confirmationDelay = fastReacquire
+      ? Math.min(acquireDelayMs, reacquireDelayMs)
+      : acquireDelayMs;
     const timer = schedule(() => {
       acquireTimers.delete(modelId);
       if (disposed || !activeTargets.has(modelId)) return;
 
       confirm(modelId);
+      recentlyLostAt.delete(modelId);
       if (!visibleModelId) {
-        setVisibleModel(modelId, 'acquired');
+        setVisibleModel(modelId, fastReacquire ? 'reacquired' : 'acquired');
       }
-    }, acquireDelayMs);
+    }, confirmationDelay);
     acquireTimers.set(modelId, timer);
   }
 
@@ -100,6 +117,7 @@ function createTrackingStabilizer(options = {}) {
       if (disposed || activeTargets.has(modelId)) return;
 
       removeConfirmed(modelId);
+      recentlyLostAt.set(modelId, now());
       setVisibleModel(chooseConfirmedActiveTarget(), 'lost');
     }, lossGraceMs);
   }
@@ -119,6 +137,7 @@ function createTrackingStabilizer(options = {}) {
     clearLossTimer();
     activeTargets.clear();
     confirmedTargets.clear();
+    recentlyLostAt.clear();
     confirmationOrder.splice(0);
 
     if (emit) {

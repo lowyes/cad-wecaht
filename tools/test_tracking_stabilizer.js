@@ -40,17 +40,26 @@ function createFakeClock() {
     now = target;
   }
 
-  return { schedule, cancel, advance, pending: () => tasks.size };
+  return {
+    schedule,
+    cancel,
+    advance,
+    now: () => now,
+    pending: () => tasks.size,
+  };
 }
 
 function createHarness() {
   const clock = createFakeClock();
   const changes = [];
   const stabilizer = createTrackingStabilizer({
-    acquireDelayMs: 250,
-    lossGraceMs: 800,
+    acquireDelayMs: 200,
+    lossGraceMs: 1000,
+    reacquireDelayMs: 100,
+    reacquireWindowMs: 2500,
     schedule: clock.schedule,
     cancel: clock.cancel,
+    now: clock.now,
     onChange(modelId, meta) {
       changes.push({ modelId, reason: meta.reason });
     },
@@ -71,20 +80,20 @@ function createHarness() {
 {
   const { clock, changes, stabilizer } = createHarness();
   stabilizer.update('part_0001', true);
-  clock.advance(250);
+  clock.advance(200);
   assert.deepStrictEqual(changes, [
     { modelId: 'part_0001', reason: 'acquired' },
   ]);
 
   stabilizer.update('part_0001', false);
-  clock.advance(500);
+  clock.advance(700);
   stabilizer.update('part_0001', true);
   clock.advance(500);
   assert.strictEqual(changes.length, 1);
   console.log('PASS short target loss is hidden by the grace period');
 
   stabilizer.update('part_0001', false);
-  clock.advance(700);
+  clock.advance(900);
   stabilizer.update('part_0001', false);
   clock.advance(100);
   assert.deepStrictEqual(changes.at(-1), { modelId: '', reason: 'lost' });
@@ -94,20 +103,58 @@ function createHarness() {
 {
   const { clock, changes, stabilizer } = createHarness();
   stabilizer.update('part_0001', true);
-  clock.advance(250);
+  clock.advance(200);
   stabilizer.update('part_0002', true);
-  clock.advance(250);
+  clock.advance(200);
   assert.strictEqual(stabilizer.getVisibleModelId(), 'part_0001');
   assert.strictEqual(changes.length, 1);
   console.log('PASS current target remains locked while another target appears');
 
   stabilizer.update('part_0001', false);
-  clock.advance(800);
+  clock.advance(1000);
   assert.deepStrictEqual(changes.at(-1), {
     modelId: 'part_0002',
     reason: 'lost',
   });
   console.log('PASS confirmed alternate target takes over after loss');
+}
+
+{
+  const { clock, changes, stabilizer } = createHarness();
+  stabilizer.update('part_0001', true);
+  clock.advance(200);
+  stabilizer.update('part_0001', false);
+  clock.advance(1000);
+  assert.deepStrictEqual(changes.at(-1), { modelId: '', reason: 'lost' });
+
+  stabilizer.update('part_0001', true);
+  clock.advance(99);
+  assert.strictEqual(stabilizer.getVisibleModelId(), '');
+  clock.advance(1);
+  assert.deepStrictEqual(changes.at(-1), {
+    modelId: 'part_0001',
+    reason: 'reacquired',
+  });
+  console.log('PASS recently lost target is reacquired faster');
+}
+
+{
+  const { clock, changes, stabilizer } = createHarness();
+  stabilizer.update('part_0002', true);
+  clock.advance(200);
+  stabilizer.update('part_0002', false);
+  clock.advance(1000);
+  clock.advance(2501);
+
+  stabilizer.update('part_0002', true);
+  clock.advance(100);
+  assert.strictEqual(stabilizer.getVisibleModelId(), '');
+  clock.advance(100);
+  assert.deepStrictEqual(changes.at(-1), {
+    modelId: 'part_0002',
+    reason: 'acquired',
+  });
+  console.log('PASS expired reacquire window uses normal confirmation');
 }
 
 {

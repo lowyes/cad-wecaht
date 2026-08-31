@@ -9,8 +9,12 @@ const {
 const SUPPORTED_MODEL_IDS = AR_TARGETS.map((target) => target.modelId);
 const SUPPORTED_MODEL_ID_SET = new Set(SUPPORTED_MODEL_IDS);
 const MAX_RENDER_PIXEL_RATIO = 2;
-const TRACK_ACQUIRE_DELAY_MS = 250;
-const TRACK_LOSS_GRACE_MS = 800;
+const TRACK_ACQUIRE_DELAY_MS = 200;
+const TRACK_LOSS_GRACE_MS = 1000;
+const TRACK_REACQUIRE_DELAY_MS = 100;
+const TRACK_REACQUIRE_WINDOW_MS = 2500;
+const ASSET_PROGRESS_STEP = 5;
+const TRANSFORM_UPDATE_INTERVAL_MS = 32;
 const STARTUP_SLOW_MS = 12000;
 const STARTUP_FAILURE_MS = 25000;
 
@@ -66,10 +70,17 @@ Page({
   },
 
   startAR() {
-    if (this.data.arStarted) return;
+    if (this.runtimeActive || this.data.arStarted) return;
 
+    this.runtimeActive = true;
     this.initializeTrackingStabilizer();
     this.clearStartupTimers();
+    this.lastReportedAssetProgress = -1;
+    this.performanceTrace = {
+      startedAt: Date.now(),
+      stages: {},
+    };
+    this.recordPerformanceStage('start');
 
     this.setData({
       arStarted: true,
@@ -136,6 +147,7 @@ Page({
   },
 
   handleSceneReady() {
+    if (!this.runtimeActive) return;
     if (this.trackingStabilizer) {
       this.trackingStabilizer.reset({ emit: false });
     }
@@ -144,10 +156,11 @@ Page({
       statusText: '场景已启动，正在开启摄像头',
       loadingText: '正在开启相机与本地识图…',
     });
+    this.recordPerformanceStage('scene-ready');
   },
 
   handleARReady() {
-    if (!this.data.arStarted) return;
+    if (!this.runtimeActive) return;
     this.clearStartupTimers();
     this.setData({
       arReady: true,
@@ -163,14 +176,23 @@ Page({
         startupSlow: false,
       });
     }, 380);
+    this.recordPerformanceStage('ar-ready');
   },
 
   handleAssetsProgress({ detail } = {}) {
+    if (!this.runtimeActive) return;
     const payload = detail && (detail.value || detail);
     const progress = payload && payload.progress;
     if (typeof progress === 'number') {
       const normalizedProgress = progress <= 1 ? progress * 100 : progress;
       const resourceProgress = Math.min(Math.round(normalizedProgress), 100);
+      if (
+        resourceProgress !== 100 &&
+        resourceProgress < this.lastReportedAssetProgress + ASSET_PROGRESS_STEP
+      ) {
+        return;
+      }
+      this.lastReportedAssetProgress = resourceProgress;
       this.setData({
         launchProgress: Math.max(
           this.data.launchProgress,
@@ -182,23 +204,25 @@ Page({
   },
 
   handleAssetsLoaded() {
-    if (!this.data.arStarted) return;
+    if (!this.runtimeActive) return;
     this.setData({
       modelReady: true,
       modelWarning: '',
       launchProgress: Math.max(this.data.launchProgress, 94),
       loadingText: this.data.arReady ? 'AR 视野已就绪' : '模型就绪，正在连接相机',
     });
+    this.recordPerformanceStage('assets-loaded');
   },
 
   handleModelLoaded() {
-    if (!this.data.arStarted) return;
+    if (!this.runtimeActive) return;
     this.setData({
       modelReady: true,
     });
   },
 
   handleTrackerChange({ detail = {} } = {}) {
+    if (!this.runtimeActive) return;
     const modelId = detail.modelId;
     if (!SUPPORTED_MODEL_ID_SET.has(modelId)) {
       console.warn('[AR tracker] ignored unknown model:', modelId);
@@ -206,10 +230,14 @@ Page({
     }
 
     if (!this.trackingStabilizer) this.initializeTrackingStabilizer();
+    if (detail.active) {
+      this.recordPerformanceStage(`tracker-active:${modelId}`);
+    }
     this.trackingStabilizer.update(modelId, detail.active);
   },
 
   handleTrackerState({ detail = {} } = {}) {
+    if (!this.runtimeActive) return;
     if (detail.errorMessage) {
       this.setData({
         statusText: `识图跟踪器异常：${detail.errorMessage}`,
@@ -225,6 +253,7 @@ Page({
   },
 
   handleModelError({ detail = {} } = {}) {
+    if (!this.runtimeActive) return;
     const modelId = detail.modelId || '';
     const globalFailure = detail.globalFailure !== false;
     const message = detail.message || '三维模型加载失败，识图功能仍可使用';
@@ -243,17 +272,43 @@ Page({
     this.trackingStabilizer = createTrackingStabilizer({
       acquireDelayMs: TRACK_ACQUIRE_DELAY_MS,
       lossGraceMs: TRACK_LOSS_GRACE_MS,
-      onChange: (modelId) => this.applyStableTarget(modelId),
+      reacquireDelayMs: TRACK_REACQUIRE_DELAY_MS,
+      reacquireWindowMs: TRACK_REACQUIRE_WINDOW_MS,
+      onChange: (modelId, meta) => this.applyStableTarget(modelId, meta),
     });
   },
 
-  applyStableTarget(modelId) {
+  applyStableTarget(modelId, meta = {}) {
     if (this.data.recognizedModelId === modelId) return;
     this.setData({
       recognizedModelId: modelId,
       statusText: modelId
         ? `识别成功：${modelId}`
         : '目标丢失，请重新对准完整工程图',
+    });
+    this.recordPerformanceStage(
+      modelId ? `stable-target:${modelId}` : 'stable-target-lost',
+      { reason: meta.reason || '' },
+    );
+    console.info('[AR tracking]', {
+      modelId,
+      active: Boolean(modelId),
+      reason: meta.reason || '',
+      elapsedMs: this.performanceTrace
+        ? Date.now() - this.performanceTrace.startedAt
+        : null,
+    });
+  },
+
+  recordPerformanceStage(stage, detail = {}) {
+    const trace = this.performanceTrace;
+    if (!trace || trace.stages[stage] !== undefined) return;
+    const elapsedMs = Date.now() - trace.startedAt;
+    trace.stages[stage] = elapsedMs;
+    console.info('[AR performance]', {
+      stage,
+      elapsedMs,
+      ...detail,
     });
   },
 
@@ -265,11 +320,17 @@ Page({
   },
 
   disposeRuntimeState() {
+    this.runtimeActive = false;
     clearTimeout(this.autostartTimer);
     this.autostartTimer = null;
     this.clearStartupTimers();
     clearTimeout(this.launchDismissTimer);
     this.launchDismissTimer = null;
+    clearTimeout(this.transformUpdateTimer);
+    this.transformUpdateTimer = null;
+    this.pendingModelTransform = null;
+    this.lastReportedAssetProgress = -1;
+    this.performanceTrace = null;
     this.gestureState = null;
     if (this.trackingStabilizer) {
       this.trackingStabilizer.dispose();
@@ -332,12 +393,15 @@ Page({
   },
 
   handleGestureStart(event) {
+    this.flushModelTransform();
     const touches = event.touches || [];
     if (touches.length === 1) {
       this.gestureState = {
         mode: 'rotate',
         x: touches[0].clientX,
         y: touches[0].clientY,
+        rotationX: this.data.modelRotationX,
+        rotationY: this.data.modelRotationY,
       };
       return;
     }
@@ -361,9 +425,11 @@ Page({
       const dy = touches[0].clientY - gesture.y;
       gesture.x = touches[0].clientX;
       gesture.y = touches[0].clientY;
-      this.setData({
-        modelRotationX: (this.data.modelRotationX + dy * 0.6) % 360,
-        modelRotationY: (this.data.modelRotationY + dx * 0.6) % 360,
+      gesture.rotationX = (gesture.rotationX + dy * 0.6) % 360;
+      gesture.rotationY = (gesture.rotationY + dx * 0.6) % 360;
+      this.queueModelTransform({
+        modelRotationX: gesture.rotationX,
+        modelRotationY: gesture.rotationY,
       });
       return;
     }
@@ -371,7 +437,7 @@ Page({
     if (gesture.mode === 'scale' && touches.length === 2) {
       const distance = this.getTouchDistance(touches);
       if (!gesture.distance) return;
-      this.setData({
+      this.queueModelTransform({
         modelScale: Math.min(
           Math.max(gesture.scale * (distance / gesture.distance), 1),
           30,
@@ -383,11 +449,33 @@ Page({
   handleGestureEnd(event) {
     const touches = event.touches || [];
     if (touches.length === 0) {
+      this.flushModelTransform();
       this.gestureState = null;
       return;
     }
 
+    this.flushModelTransform();
     this.handleGestureStart(event);
+  },
+
+  queueModelTransform(transform) {
+    this.pendingModelTransform = {
+      ...(this.pendingModelTransform || {}),
+      ...transform,
+    };
+    if (this.transformUpdateTimer) return;
+    this.transformUpdateTimer = setTimeout(() => {
+      this.transformUpdateTimer = null;
+      this.flushModelTransform();
+    }, TRANSFORM_UPDATE_INTERVAL_MS);
+  },
+
+  flushModelTransform() {
+    clearTimeout(this.transformUpdateTimer);
+    this.transformUpdateTimer = null;
+    const transform = this.pendingModelTransform;
+    this.pendingModelTransform = null;
+    if (transform && this.data.arStarted) this.setData(transform);
   },
 
   getTouchDistance(touches) {

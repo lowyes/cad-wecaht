@@ -109,6 +109,34 @@
 - Next suggested step: 手机扫码测试 0001/0002/0003；确认稳定后提交并推送新的纯 AR
   版本，再开始批量扩展目标图与模型清单。
 
+## 2026-08-04：固定工程图深度匹配独立实验
+
+- 在 `experiments/drawing_matcher/` 新建隔离测试模块，未接入或修改当前小程序
+  XR-FRAME Marker 主链路。
+- 实现两套可对照流水线：
+  - `SIFT + Lowe ratio + OpenCV USAC_MAGSAC`。
+  - `ALIKED + LightGlue + OpenCV USAC_MAGSAC`。
+- 两套方案统一使用内点数、内点比例、空间覆盖率、重投影误差和 Top-1 领先差进行
+  最终接受或拒识。
+- LightGlue 固定到官方提交
+  `eb42fee2d71449efb0aa5c10549752b5d75384d8`；Kornia 固定为 0.7.4，
+  Kornia-RS 固定为 0.1.14，均安装到实验目录 `.deps/`。
+- `math` 环境验证通过：PyTorch 2.5.1+cu121、CUDA 可用、RTX 3050 Laptop GPU、
+  OpenCV 5.0.0。
+- 测试矩阵包含24个增强正样本和5个拒识样本，其中2个拒识样本来自项目已有的
+  未入库工程图。
+- 同进程对照结果：
+  - SIFT + MAGSAC++：29/29，平均 185.3 ms，P95 251.3 ms。
+  - ALIKED + LightGlue + MAGSAC++：29/29，平均 243.5 ms，P95 314.5 ms。
+- 结论：当前3张清晰参考图下，深度方案没有速度或准确率优势；建议先保留 SIFT
+  作为快速层，收集真实手机困难样本后再决定是否将深度方案作为低置信度复核层。
+- Verification commands run:
+  - `powershell -ExecutionPolicy Bypass -File experiments/drawing_matcher/setup.ps1`
+  - `python run_benchmark.py --method both --device cuda`
+  - `python -m py_compile matcher.py test_cases.py run_benchmark.py`
+- 已知限制：当前正样本主要来自确定性图像增强，不等价于真实手机拍摄；模型首次使用
+  需下载约 48 MB 权重。
+
 ## 2026-07-25：离线数据集管理器
 
 - 新增 Windows 双击启动的本地可视化管理器，支持目标清单、新增、编辑、删除、
@@ -117,3 +145,34 @@
   不上传工程图或模型。
 - 已使用临时 `part_9999` 完成新增、编辑、完整校验、删除的端到端测试；
   测试目标已移除，目标库恢复为 3 项。
+
+## 2026-08-05：本地 AR 真机稳定性优化
+
+- 保持 XR-FRAME Marker 主架构、3张正式目标图和3个 GLB 不变。
+- 跟踪稳定器调整：首次确认 250→200 ms，短暂丢失宽限 800→1000 ms；新增
+  2.5秒快速重捕获窗口，窗口内重新出现仅需 100 ms 确认。
+- 启动资源进度按至少5%变化更新，旋转/缩放手势按32 ms合并更新，减少高频
+  `setData` 对 JS 与渲染层的压力。
+- 增加纯本地 `[AR performance]` 与 `[AR tracking]` 控制台日志，记录场景、资源、
+  相机、首次跟踪和稳定切换的相对时间，不上传任何数据。
+- 增加独立运行态标志，页面隐藏或卸载后忽略迟到的 XR 事件，避免旧场景竞态地重新
+  创建跟踪状态。
+- 新增 `tools/analyze_ar_targets.py` 和 `docs/AR_OPTIMIZATION_REPORT.md`，用于复测目标图
+  线条占比、内容覆盖、SIFT 特征数量和空间分布。
+- 静态分析结果：part_0002/0003 特征充足；part_0001 仅247个 SIFT 特征且线条占比
+  约3.1%，需优先进行真机远距离、弱光和运动模糊测试。为避免改变锚点，正式目标图
+  暂未自动裁剪或增强。
+- 在 `experiments/ar_target_quality/` 生成 part_0001 独立候选图，特征点提升到1467、
+  黑线占比提升到5.8%；因与旧原图的传统几何兼容验证未通过，未接入正式 Marker，
+  仅供候选图成对入库/打印的真机 A/B 测试。
+- 用户确认进行候选测试后，将候选图以新文件复制到小程序资源目录，并临时设为
+  part_0001 活动 Marker；旧原图通过 `originalMarkerSrc` 保留，未覆盖或删除。
+- Verification commands run:
+  - `node --check miniprogram/pages/ar-viewer/ar-viewer.js`
+  - `node --check miniprogram/utils/tracking_stabilizer.js`
+  - `node tools/test_tracking_stabilizer.js`（8项 PASS）
+  - `node tools/test_ar_viewer_runtime.js`（4项 PASS）
+  - `python -m py_compile tools/analyze_ar_targets.py`
+  - `python tools/analyze_ar_targets.py`
+- 已知限制：XR-FRAME 相机识别、锚点抖动与真实重捕获耗时仍必须通过微信真机预览
+  验证；桌面自动化只能验证状态机和资源完整性。
