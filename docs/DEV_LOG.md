@@ -339,3 +339,10 @@
   `drag-shape` 时出现“能点中但拖不动”。
 - 原始手势接管期间忽略合成 `drag-shape`，防止同一位移被重复应用；松手、切换全局
   动画和页面销毁时都会移除临时监听。
+
+### 真机零件节点解析兼容
+
+- 不再强制依赖部分 XR-FRAME 运行时缺失的 `GLTF.getInternalNodeByName()`。
+- 优先使用内部节点；接口缺失或查找失败时，从
+  `GLTF.getPrimitivesByNodeName()` 返回的真实渲染元素取得 Transform 和碰撞目标。
+- 缓存解析到的 Primitive Element，碰撞体绑定阶段不再重复查询节点。

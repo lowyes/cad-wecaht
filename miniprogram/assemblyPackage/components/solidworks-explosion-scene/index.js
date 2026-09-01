@@ -175,6 +175,49 @@ Component({
       return found;
     },
 
+    getPartPrimitives(name) {
+      if (
+        !this.gltfComponent ||
+        typeof this.gltfComponent.getPrimitivesByNodeName !== 'function'
+      ) {
+        return [];
+      }
+      try {
+        const primitives = this.gltfComponent.getPrimitivesByNodeName(name);
+        return Array.isArray(primitives) ? primitives : [];
+      } catch (error) {
+        console.warn(`[solidworks-assembly] primitive lookup failed: ${name}`, error);
+        return [];
+      }
+    },
+
+    resolvePartBinding(name, xrFrameSystem) {
+      let internalElement = null;
+      if (typeof this.gltfComponent.getInternalNodeByName === 'function') {
+        try {
+          internalElement = this.gltfComponent.getInternalNodeByName(name);
+        } catch (error) {
+          console.warn(`[solidworks-assembly] internal node lookup failed: ${name}`, error);
+        }
+      }
+
+      const primitives = this.getPartPrimitives(name);
+      const primitiveElement = primitives.find((primitive) => primitive && primitive.el)?.el || null;
+      const candidates = [internalElement, primitiveElement].filter(Boolean);
+      for (const element of candidates) {
+        if (typeof element.getComponent !== 'function') continue;
+        const transform = element.getComponent(xrFrameSystem.Transform);
+        if (transform) {
+          return {
+            element,
+            transform,
+            hitElement: primitiveElement || element,
+          };
+        }
+      }
+      return null;
+    },
+
     async resolvePartRecords(xrFrameSystem) {
       const maxAttempts = 5;
       let lastFailures = [];
@@ -184,20 +227,16 @@ Component({
         const records = config.interactivePartNames
           .map((name) => {
             try {
-              const element = this.gltfComponent.getInternalNodeByName(name);
-              if (!element) {
+              const binding = this.resolvePartBinding(name, xrFrameSystem);
+              if (!binding) {
                 failures.push(`${name}:not-found`);
-                return null;
-              }
-              const transform = element.getComponent(xrFrameSystem.Transform);
-              if (!transform) {
-                failures.push(`${name}:no-transform`);
                 return null;
               }
               return {
                 name,
-                element,
-                transform,
+                element: binding.element,
+                transform: binding.transform,
+                hitElement: binding.hitElement,
                 basePosition: null,
                 explodedPosition: null,
                 isExploded: false,
@@ -271,12 +310,8 @@ Component({
         for (let index = 0; index < this.partRecords.length; index += 1) {
           const record = this.partRecords[index];
           try {
-            const primitives =
-              typeof this.gltfComponent.getPrimitivesByNodeName === 'function'
-                ? this.gltfComponent.getPrimitivesByNodeName(record.name)
-                : [];
             const hitElement =
-              (primitives && primitives[0] && primitives[0].el) ||
+              record.hitElement ||
               this.findFirstMeshElement(record.element, meshClass);
             if (!hitElement) {
               noteFailure('mesh', record.name, '零件子树中未找到 Mesh 元素');

@@ -162,6 +162,7 @@ assert.strictEqual(
 );
 assert(solidworksComponent.includes('getInternalNodeByName'));
 assert(solidworksComponent.includes('getPrimitivesByNodeName'));
+assert(solidworksComponent.includes('resolvePartBinding(name, xrFrameSystem)'));
 assert(solidworksComponent.includes('xrFrameSystem.CubeShape'));
 assert(solidworksComponent.includes("hitElement.event.add('drag-shape'"));
 assert(solidworksComponent.includes('record.explodedPosition'));
@@ -260,6 +261,27 @@ const componentInstance = {
   },
   triggerEvent() {},
 };
+
+// 部分真机 XR-FRAME 版本不暴露 getInternalNodeByName；此时必须能直接
+// 从 getPrimitivesByNodeName 返回的渲染元素取得 Transform。
+const primitiveTransform = { position: { x: 1, y: 2, z: 3 } };
+const primitiveElement = {
+  getComponent(componentClass) {
+    return componentClass === 'Transform' ? primitiveTransform : null;
+  },
+};
+componentInstance.gltfComponent = {
+  getPrimitivesByNodeName(name) {
+    return name === '测试零件' ? [{ el: primitiveElement }] : [];
+  },
+};
+const primitiveBinding = componentInstance.resolvePartBinding('测试零件', {
+  Transform: 'Transform',
+});
+assert(primitiveBinding, '缺少内部节点 API 时应从 Primitive 回退解析零件');
+assert.strictEqual(primitiveBinding.element, primitiveElement);
+assert.strictEqual(primitiveBinding.hitElement, primitiveElement);
+assert.strictEqual(primitiveBinding.transform, primitiveTransform);
 const originalNow = Date.now;
 const originalSetTimeout = global.setTimeout;
 const originalClearTimeout = global.clearTimeout;
