@@ -21,3 +21,7 @@ node tools/dataset-manager/glb-animation-inspector.js assembly_0001.glb
 
 “拆卸”正向播放原始轨道，“安装”倒向播放同一轨道。“分层”只是停在动画中段，
 不是 SolidWorks 剖切动画。
+
+页面会通过 GLTF 组件的 `getInternalNodeByName()` 获取 58 个动画零件。点击零件时，
+它在 SolidWorks 动画的装配位与拆卸位之间切换；按住拖动则只修改该零件的局部位置，
+空白区域仍用于旋转视角。

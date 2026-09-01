@@ -12,6 +12,7 @@
     bind:model-error="handleModelError"
     bind:animation-start="handleAnimationStart"
     bind:animation-end="handleAnimationEnd"
+    bind:part-selected="handlePartSelected"
   />
 
   <view class="ambient-glow glow-left"></view>
@@ -43,7 +44,7 @@
   </view>
 
   <view class="interaction-tip" wx:if="{{ready && !busy}}">
-    单指拖动旋转 · 双指捏合缩放
+    点击零件自动拆装 · 按住零件拖动 · 空白处旋转
   </view>
 
   <view class="control-panel">
@@ -66,7 +67,7 @@
       </view>
     </view>
     <view class="demo-note">
-      {{assemblyLabel}} · SolidWorks 原始爆炸视图已转为微信本地 GLB。
+      {{assemblyLabel}} · {{interactivePartCount}} 个零件支持点击定位与独立拖动。
     </view>
   </view>
 

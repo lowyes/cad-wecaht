@@ -155,6 +155,15 @@ assert.deepStrictEqual(solidworksConfig.clipNames, [
   'gltfAnimation',
   'gltfAnimation#0',
 ]);
+assert.strictEqual(solidworksConfig.interactivePartNames.length, 58);
+assert.strictEqual(
+  new Set(solidworksConfig.interactivePartNames).size,
+  solidworksConfig.interactivePartNames.length,
+);
+assert(solidworksComponent.includes('getInternalNodeByName'));
+assert(solidworksComponent.includes('xrFrameSystem.CubeShape'));
+assert(solidworksComponent.includes("element.event.add('drag-shape'"));
+assert(solidworksComponent.includes('record.explodedPosition'));
 assert(!solidworksComponent.includes('ignoreError'));
 
 const appConfig = JSON.parse(
@@ -240,6 +249,35 @@ try {
   assert.strictEqual(componentInstance.playInstall(), true);
   assert(Math.abs(sampledProgress.at(-1)) < 1e-9);
   assert(sampledProgress.every((value, index) => index === 0 || value <= sampledProgress[index - 1]));
+
+  const partRecord = {
+    name: '测试零件',
+    transform: { position: { x: 0, y: 0, z: 0 } },
+    basePosition: [0, 0, 0],
+    explodedPosition: [0.2, 0.1, -0.05],
+    isExploded: false,
+    dragged: false,
+    animationToken: 0,
+  };
+  componentInstance.togglePartPosition(partRecord);
+  assert.strictEqual(partRecord.isExploded, true);
+  assert(Math.abs(partRecord.transform.position.x - 0.2) < 1e-9);
+  componentInstance.togglePartPosition(partRecord);
+  assert.strictEqual(partRecord.isExploded, false);
+  assert(Math.abs(partRecord.transform.position.x) < 1e-9);
+
+  const orbitState = { disabled: false };
+  componentInstance.cameraOrbit = {
+    disable() { orbitState.disabled = true; },
+    enable() { orbitState.disabled = false; },
+  };
+  componentInstance.handlePartTouch(partRecord);
+  assert.strictEqual(orbitState.disabled, true);
+  componentInstance.handlePartDrag(partRecord, { deltaX: 10, deltaY: -5 });
+  assert(partRecord.transform.position.x > 0);
+  assert(partRecord.transform.position.y > 0);
+  componentInstance.handlePartUntouch(partRecord);
+  assert.strictEqual(orbitState.disabled, false);
 } finally {
   Date.now = originalNow;
   global.setTimeout = originalSetTimeout;

@@ -49,6 +49,7 @@ Page({
     stateHint: '准备 SolidWorks 减速器与爆炸动画',
     assemblyLabel: config.label,
     animatedNodeCount: config.animatedNodeCount,
+    interactivePartCount: 0,
     durationSeconds: config.durationMs / 1000,
   },
 
@@ -110,6 +111,7 @@ Page({
     this.setData({
       loadingText: `已解析动画“${detail.clipName || config.clipName}”`,
       progress: 97,
+      interactivePartCount: Number(detail.interactivePartCount) || 0,
     });
   },
 
@@ -181,6 +183,22 @@ Page({
       activeAction: actionName,
       stateLabel: action.doneLabel,
       stateHint: action.hint,
+    });
+  },
+
+  handlePartSelected({ detail = {} }) {
+    const actionLabels = {
+      selected: '已选中零件',
+      dragging: '正在拖动零件',
+      dragged: '零件已移动',
+      'moving-out': '正在移至拆卸位',
+      'moving-back': '正在返回装配位',
+      exploded: '零件已到拆卸位',
+      complete: '零件已回装配位',
+    };
+    this.setData({
+      stateLabel: actionLabels[detail.action] || '零件交互',
+      stateHint: detail.name || '请选择一个零件',
     });
   },
 

@@ -17,8 +17,11 @@ Component({
       this.disposed = true;
       this.animationToken = (this.animationToken || 0) + 1;
       clearTimeout(this.animationTimer);
+      this.cancelAllPartAnimations();
       this.animationTimer = null;
       this.animator = null;
+      this.gltfComponent = null;
+      this.partRecords = [];
       this.scene = null;
     },
   },
@@ -46,19 +49,25 @@ Component({
       this.triggerEvent('model-error', { message: '装配体 GLB 资源加载失败' });
     },
 
-    handleGltfLoaded() {
+    async handleGltfLoaded() {
       try {
         const xrFrameSystem = wx.getXrFrameSystem();
         const model = this.scene.getElementById('assembly-model');
         this.animator = model.getComponent(xrFrameSystem.Animator);
+        this.gltfComponent = model.getComponent(xrFrameSystem.GLTF);
         if (!this.animator) throw new Error('未找到 Animator 组件');
+        if (!this.gltfComponent) throw new Error('未找到 GLTF 组件');
 
-        this.ready = true;
         this.initializeAnimationClips();
+        const interactivePartCount = await this.prepareInteractiveParts(
+          xrFrameSystem,
+        );
+        this.ready = true;
         this.triggerEvent('model-ready', {
           clipName: config.displayClipName,
           durationMs: config.durationMs,
           animatedNodeCount: config.animatedNodeCount,
+          interactivePartCount,
         });
         this.triggerEvent('assets-loaded');
       } catch (error) {
@@ -85,6 +94,191 @@ Component({
       return true;
     },
 
+    waitForPoseUpdate(delayMs = 48) {
+      return new Promise((resolve) => setTimeout(resolve, delayMs));
+    },
+
+    clonePosition(transform) {
+      return [
+        Number(transform.position.x) || 0,
+        Number(transform.position.y) || 0,
+        Number(transform.position.z) || 0,
+      ];
+    },
+
+    setTransformPosition(transform, position) {
+      transform.position.x = position[0];
+      transform.position.y = position[1];
+      transform.position.z = position[2];
+    },
+
+    async prepareInteractiveParts(xrFrameSystem) {
+      this.partRecords = config.interactivePartNames
+        .map((name) => {
+          const element = this.gltfComponent.getInternalNodeByName(name);
+          if (!element) return null;
+          const transform = element.getComponent(xrFrameSystem.Transform);
+          if (!transform) return null;
+          return {
+            name,
+            element,
+            transform,
+            basePosition: null,
+            explodedPosition: null,
+            isExploded: false,
+            dragged: false,
+            animationToken: 0,
+          };
+        })
+        .filter(Boolean);
+
+      await this.waitForPoseUpdate();
+      for (const record of this.partRecords) {
+        record.basePosition = this.clonePosition(record.transform);
+      }
+      this.applyAnimationProgress(1);
+      await this.waitForPoseUpdate();
+      for (const record of this.partRecords) {
+        record.explodedPosition = this.clonePosition(record.transform);
+      }
+      this.applyAnimationProgress(0);
+      await this.waitForPoseUpdate();
+
+      const camera = this.scene.getElementById('camera');
+      this.cameraOrbit = camera && camera.getComponent(
+        xrFrameSystem.CameraOrbitControl,
+      );
+      let shapeCount = 0;
+      for (const record of this.partRecords) {
+        record.element.dfs((element) => {
+          const mesh = element.getComponent(xrFrameSystem.Mesh);
+          if (!mesh) return;
+          let shape = element.getComponent(xrFrameSystem.CubeShape);
+          if (!shape) {
+            shape = element.addComponent(xrFrameSystem.CubeShape, {
+              autoFit: true,
+            });
+          }
+          if (!shape) return;
+          shapeCount += 1;
+          element.event.add('touch-shape', (event) => {
+            this.handlePartTouch(record, event);
+          });
+          element.event.add('drag-shape', (event) => {
+            this.handlePartDrag(record, event);
+          });
+          element.event.add('untouch-shape', (event) => {
+            this.handlePartUntouch(record, event);
+          });
+        });
+      }
+      console.log('[solidworks-assembly] interactive parts ready', {
+        configured: config.interactivePartNames.length,
+        resolved: this.partRecords.length,
+        shapes: shapeCount,
+      });
+      return this.partRecords.length;
+    },
+
+    eventPayload(event) {
+      if (!event) return {};
+      return event.detail ? event.detail.value || event.detail : event.value || event;
+    },
+
+    handlePartTouch(record) {
+      if (!this.ready || this.animating) return;
+      this.activePart = record;
+      record.dragged = false;
+      if (this.cameraOrbit) this.cameraOrbit.disable();
+      this.triggerEvent('part-selected', {
+        name: record.name,
+        action: 'selected',
+      });
+    },
+
+    handlePartDrag(record, event) {
+      if (!this.ready || this.animating || this.activePart !== record) return;
+      const payload = this.eventPayload(event);
+      const deltaX = Number(payload.deltaX) || 0;
+      const deltaY = Number(payload.deltaY) || 0;
+      if (!deltaX && !deltaY) return;
+      record.animationToken += 1;
+      record.dragged = true;
+      const dragScale = 0.00042;
+      record.transform.position.x += deltaX * dragScale;
+      record.transform.position.y -= deltaY * dragScale;
+      this.triggerEvent('part-selected', {
+        name: record.name,
+        action: 'dragging',
+      });
+    },
+
+    handlePartUntouch(record) {
+      if (this.cameraOrbit) this.cameraOrbit.enable();
+      if (this.activePart !== record) return;
+      this.activePart = null;
+      if (record.dragged || this.animating) {
+        this.triggerEvent('part-selected', {
+          name: record.name,
+          action: 'dragged',
+        });
+        return;
+      }
+      this.togglePartPosition(record);
+    },
+
+    togglePartPosition(record) {
+      const moveToExploded = !record.isExploded;
+      const target = moveToExploded
+        ? record.explodedPosition
+        : record.basePosition;
+      record.isExploded = moveToExploded;
+      this.animatePartTo(record, target, moveToExploded ? 'exploded' : 'complete');
+    },
+
+    animatePartTo(record, target, state) {
+      if (!target) return false;
+      record.animationToken += 1;
+      const token = record.animationToken;
+      const start = this.clonePosition(record.transform);
+      const startedAt = Date.now();
+      const durationMs = 620;
+      this.triggerEvent('part-selected', {
+        name: record.name,
+        action: state === 'exploded' ? 'moving-out' : 'moving-back',
+      });
+      const tick = () => {
+        if (this.disposed || token !== record.animationToken) return;
+        const ratio = Math.min(1, (Date.now() - startedAt) / durationMs);
+        const eased = 1 - Math.pow(1 - ratio, 3);
+        this.setTransformPosition(record.transform, [
+          start[0] + (target[0] - start[0]) * eased,
+          start[1] + (target[1] - start[1]) * eased,
+          start[2] + (target[2] - start[2]) * eased,
+        ]);
+        if (ratio >= 1) {
+          this.triggerEvent('part-selected', {
+            name: record.name,
+            action: state,
+          });
+          return;
+        }
+        record.animationTimer = setTimeout(tick, 32);
+      };
+      record.animationTimer = setTimeout(tick, 0);
+      return true;
+    },
+
+    cancelAllPartAnimations() {
+      for (const record of this.partRecords || []) {
+        record.animationToken += 1;
+        clearTimeout(record.animationTimer);
+        record.animationTimer = null;
+      }
+      if (this.cameraOrbit) this.cameraOrbit.enable();
+      this.activePart = null;
+    },
+
     applyAnimationProgress(progress) {
       if (!this.animator) return false;
       const normalizedProgress = Math.max(0, Math.min(1, progress));
@@ -106,6 +300,7 @@ Component({
 
     animateToProgress(targetProgress, mode) {
       if (!this.ready || !this.animator || this.animating) return false;
+      this.cancelAllPartAnimations();
       this.animationToken = (this.animationToken || 0) + 1;
       const token = this.animationToken;
       clearTimeout(this.animationTimer);
@@ -156,6 +351,12 @@ Component({
       clearTimeout(this.animationTimer);
       this.animationTimer = null;
       this.animating = false;
+      if (this.currentMode === 'exploded' || this.currentMode === 'complete') {
+        const isExploded = this.currentMode === 'exploded';
+        for (const record of this.partRecords || []) {
+          record.isExploded = isExploded;
+        }
+      }
       this.triggerEvent('animation-end', { mode: this.currentMode });
     },
 
