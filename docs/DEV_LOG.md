@@ -74,6 +74,7 @@
   - `node --check`（全部小程序 JS 与自检脚本）
   - PowerShell `ConvertFrom-Json`（项目使用的全部 JSON 配置）
   - `git diff --check`
+
   - 微信开发者工具重新编译并检查当前页面及问题面板。
 - Result: PASS with one device-only limitation.
   - 应用只注册 `pages/ar-viewer/ar-viewer`。
@@ -233,9 +234,9 @@
 - 新增 `tools/prepare_solidworks_gltf.js`：移除 XR-FRAME 无法直接使用的 DDS 法线贴图
   绑定、SolidWorks 查看器私有扩展和失去引用的纹理项，不改写源文件。
 - 使用 gltfpack 保留节点名和动画，将约 44 MB 的多文件导出资源整理为
-  `assemblyPackage/assets/assembly_0001.glb`（1,704,460 bytes）；优化后为
-  35 个网格、156,744 个三角面。
-- 新增独立分包 `assemblyPackage`，分包总大小 1,720,189 bytes，避免真实装配体占用
+  `assemblyPackage/assets/assembly_0001.glb`（1,850,904 bytes）；优化后为
+  35 个网格、63,681 个唯一三角面。
+- 新增独立分包 `assemblyPackage`，分包总大小 1,868,676 bytes，避免真实装配体占用
   小程序主包；AR 识别装配图后的按钮现跳转到该真实爆炸视图页面。
 - 真实模型只有一条爆炸动画，没有独立剖切轨道，因此第三个按钮明确显示为“分层”，
   通过停在动画 52% 位置观察内部结构，不冒充真实剖面。
@@ -251,3 +252,14 @@
   - `node tools/test_glb_animation_inspector.js`
   - `node tools/verify_local_ar.js`
   - `git diff --check`
+
+### 真机加载超时修复
+
+- 首版 1.70 MB 模型使用 `KHR_mesh_quantization` 和 `KHR_texture_transform`；静态 glTF
+  检查能通过，但真机 XR-FRAME 一直停留在加载态，判断为运行时扩展兼容问题。
+- 重新从清理后的 SolidWorks glTF 生成无扩展 GLB：使用浮点顶点、不使用 Draco、
+  Meshopt、量化或纹理变换扩展，保留同一条 4 秒、58 节点爆炸动画。
+- 新 GLB 为 1,850,904 bytes、35 个网格、63,681 个唯一三角面；整个分包仍低于
+  2 MB。
+- 移除会吞掉解析错误的 `ignoreError` 选项；增加 18 秒加载看门狗和“重新加载装配体”
+  按钮，后续即使资源异常也不会永久停在加载动画。

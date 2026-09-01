@@ -9,7 +9,7 @@ const ASSEMBLY_CONFIG = {
   scale: 5,
   rotation: [0, 0, 0],
   animatedNodeCount: 58,
-  triangleCount: 156744,
+  triangleCount: 63681,
 };
 
 module.exports = ASSEMBLY_CONFIG;

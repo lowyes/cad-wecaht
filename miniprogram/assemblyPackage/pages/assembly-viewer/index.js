@@ -41,6 +41,7 @@ Page({
     ready: false,
     busy: false,
     progress: 8,
+    loadTimedOut: false,
     loadingText: '正在创建 XR-FRAME 场景…',
     activeMode: 'complete',
     activeAction: 'complete',
@@ -67,10 +68,25 @@ Page({
       renderWidth: Math.round(viewWidth * pixelRatio),
       renderHeight: Math.round(viewHeight * pixelRatio),
     });
+    this.startLoadWatchdog();
   },
 
   onUnload() {
     this.pendingAction = null;
+    clearTimeout(this.loadWatchdog);
+    this.loadWatchdog = null;
+  },
+
+  startLoadWatchdog() {
+    clearTimeout(this.loadWatchdog);
+    this.loadWatchdog = setTimeout(() => {
+      if (this.data.ready) return;
+      this.setData({
+        loadTimedOut: true,
+        progress: 0,
+        loadingText: '模型加载超时，请点击下方按钮重新加载',
+      });
+    }, 18000);
   },
 
   handleSceneReady() {
@@ -98,6 +114,8 @@ Page({
   },
 
   handleAssetsLoaded() {
+    clearTimeout(this.loadWatchdog);
+    this.loadWatchdog = null;
     setTimeout(() => {
       this.setData({
         loading: false,
@@ -110,14 +128,23 @@ Page({
   },
 
   handleModelError({ detail = {} }) {
+    clearTimeout(this.loadWatchdog);
+    this.loadWatchdog = null;
     this.setData({
       loading: false,
       ready: false,
       busy: false,
       stateLabel: '模型加载失败',
       stateHint: detail.message || '请重新进入页面后再试',
+      loadTimedOut: true,
     });
     wx.showToast({ title: detail.message || '模型加载失败', icon: 'none' });
+  },
+
+  retryLoad() {
+    wx.redirectTo({
+      url: `/assemblyPackage/pages/assembly-viewer/index?assemblyId=${config.id}`,
+    });
   },
 
   handleModeTap(event) {

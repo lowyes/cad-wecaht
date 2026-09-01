@@ -75,5 +75,6 @@
     <cover-view class="loading-title">正在加载减速器</cover-view>
     <cover-view class="loading-copy">{{loadingText}}</cover-view>
     <cover-view class="progress-track"><cover-view class="progress-value" style="width:{{progress}}%;"></cover-view></cover-view>
+    <cover-view class="loading-retry" wx:if="{{loadTimedOut}}" bindtap="retryLoad">重新加载装配体</cover-view>
   </cover-view>
 </view>

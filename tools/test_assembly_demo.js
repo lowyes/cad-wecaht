@@ -122,6 +122,11 @@ assert.strictEqual(animationReport.animations[0].name, '爆炸视图1');
 assert.strictEqual(animationReport.animations[0].durationSec, 4);
 assert.strictEqual(animationReport.animations[0].tracks.translation, 58);
 assert.strictEqual(animationReport.animations[0].targetNodeCount, 58);
+assert.deepStrictEqual(
+  animationReport.extensions,
+  [],
+  '微信分包模型不应依赖量化、压缩或纹理变换扩展',
+);
 
 const solidworksComponent = fs.readFileSync(
   path.join(
@@ -137,6 +142,7 @@ const solidworksComponent = fs.readFileSync(
 assert(solidworksComponent.includes("playAnimation('backwards'"));
 assert(solidworksComponent.includes("playAnimation('forwards'"));
 assert(solidworksComponent.includes('pauseToFrame'));
+assert(!solidworksComponent.includes('ignoreError'));
 
 const appConfig = JSON.parse(
   fs.readFileSync(path.join(projectRoot, 'miniprogram', 'app.json'), 'utf8'),
@@ -147,6 +153,19 @@ assert(
   ),
   'SolidWorks 装配页应放入独立分包',
 );
+const solidworksViewerSource = fs.readFileSync(
+  path.join(
+    projectRoot,
+    'miniprogram',
+    'assemblyPackage',
+    'pages',
+    'assembly-viewer',
+    'index.js',
+  ),
+  'utf8',
+);
+assert(solidworksViewerSource.includes('startLoadWatchdog'));
+assert(solidworksViewerSource.includes('retryLoad'));
 const arViewerSource = fs.readFileSync(
   path.join(projectRoot, 'miniprogram', 'pages', 'ar-viewer', 'ar-viewer.js'),
   'utf8',

@@ -14,7 +14,6 @@
       type="gltf"
       asset-id="{{assetId}}"
       src="{{modelSrc}}"
-      options="ignoreError: -1"
     />
   </xr-assets>
 
