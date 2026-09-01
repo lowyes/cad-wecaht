@@ -307,3 +307,19 @@
   - `node tools/test_glb_animation_inspector.js`
   - `node tools/verify_local_ar.js`
   - `git diff --check`
+
+### 指定零件单独拆装
+
+- 爆炸图控制区新增“指定零件”选择器，列表来自 GLB 中实际解析成功且已建立碰撞框的
+  节点，不展示不可交互的空节点。
+- 选择零件后可执行“单件拆卸”或“单件安装”：仅该零件沿 SolidWorks 动画记录的
+  装配位与拆卸位移动，其余零件保持当前位置。
+- 直接点击三维模型中的零件时，页面选择器会同步到对应节点；既可以在模型上点选，
+  也可以用名称准确定位螺栓、轴承、齿轮、端盖等零件。
+- 单件动画与全部安装/拆卸共用同一套节点状态，执行全局操作前会安全取消正在运行的
+  单件动画。
+- Verification commands run:
+  - `node tools/test_assembly_demo.js`
+  - `node tools/test_glb_animation_inspector.js`
+  - `node tools/verify_local_ar.js`
+  - `git diff --check`

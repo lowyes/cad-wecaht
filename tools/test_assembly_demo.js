@@ -164,6 +164,7 @@ assert(solidworksComponent.includes('getInternalNodeByName'));
 assert(solidworksComponent.includes('xrFrameSystem.CubeShape'));
 assert(solidworksComponent.includes("hitElement.event.add('drag-shape'"));
 assert(solidworksComponent.includes('record.explodedPosition'));
+assert(solidworksComponent.includes('setPartPosition(name, mode)'));
 assert(solidworksComponent.includes("this.triggerEvent('interaction-ready'"));
 assert(solidworksComponent.includes("this.triggerEvent('interaction-warning'"));
 assert(
@@ -197,6 +198,7 @@ assert(solidworksViewerSource.includes('startLoadWatchdog'));
 assert(solidworksViewerSource.includes('retryLoad'));
 assert(solidworksViewerSource.includes('handleInteractionReady'));
 assert(solidworksViewerSource.includes('handleInteractionWarning'));
+assert(solidworksViewerSource.includes('handleSelectedPartAction'));
 const solidworksViewerTemplate = fs.readFileSync(
   path.join(
     projectRoot,
@@ -210,6 +212,9 @@ const solidworksViewerTemplate = fs.readFileSync(
 );
 assert(solidworksViewerTemplate.includes('bind:interaction-ready'));
 assert(solidworksViewerTemplate.includes('bind:interaction-warning'));
+assert(solidworksViewerTemplate.includes('bindchange="handlePartPickerChange"'));
+assert(solidworksViewerTemplate.includes('data-mode="exploded"'));
+assert(solidworksViewerTemplate.includes('data-mode="complete"'));
 
 let componentDefinition = null;
 const originalComponent = global.Component;
@@ -286,6 +291,17 @@ try {
   assert(Math.abs(partRecord.transform.position.x - 0.2) < 1e-9);
   componentInstance.togglePartPosition(partRecord);
   assert.strictEqual(partRecord.isExploded, false);
+  assert(Math.abs(partRecord.transform.position.x) < 1e-9);
+  componentInstance.partRecords = [partRecord];
+  assert.strictEqual(
+    componentInstance.setPartPosition('测试零件', 'exploded'),
+    true,
+  );
+  assert(Math.abs(partRecord.transform.position.x - 0.2) < 1e-9);
+  assert.strictEqual(
+    componentInstance.setPartPosition('测试零件', 'complete'),
+    true,
+  );
   assert(Math.abs(partRecord.transform.position.x) < 1e-9);
 
   const orbitState = { disabled: false };

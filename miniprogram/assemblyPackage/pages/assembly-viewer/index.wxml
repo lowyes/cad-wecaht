@@ -50,6 +50,26 @@
   </view>
 
   <view class="control-panel">
+    <view class="part-control {{interactivePartCount ? '' : 'disabled'}}">
+      <picker
+        class="part-picker"
+        mode="selector"
+        range="{{partOptions}}"
+        value="{{selectedPartIndex}}"
+        bindchange="handlePartPickerChange"
+        disabled="{{!interactivePartCount || busy || partBusy}}"
+      >
+        <view class="part-picker-value">
+          <view class="part-picker-copy">
+            <text class="part-picker-kicker">指定零件</text>
+            <text class="part-picker-name">{{selectedPartName || '正在准备零件列表…'}}</text>
+          </view>
+          <text class="part-picker-arrow">⌄</text>
+        </view>
+      </picker>
+      <view class="part-action part-explode {{partBusy || busy ? 'disabled' : ''}}" data-mode="exploded" bindtap="handleSelectedPartAction">单件拆卸</view>
+      <view class="part-action part-restore {{partBusy || busy ? 'disabled' : ''}}" data-mode="complete" bindtap="handleSelectedPartAction">单件安装</view>
+    </view>
     <view class="mode-grid">
       <view class="mode-button {{activeAction === 'install' ? 'active' : ''}} {{busy ? 'disabled' : ''}}" hover-class="button-hover" data-action="install" bindtap="handleModeTap">
         <view class="mode-icon install-icon"><view></view><view></view><view></view></view>

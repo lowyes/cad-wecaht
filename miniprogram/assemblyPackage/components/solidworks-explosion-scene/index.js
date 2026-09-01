@@ -74,7 +74,10 @@ Component({
           this.prepareInteractiveParts(xrFrameSystem)
             .then((interactivePartCount) => {
               if (this.disposed) return;
-              this.triggerEvent('interaction-ready', { interactivePartCount });
+              this.triggerEvent('interaction-ready', {
+                interactivePartCount,
+                interactivePartNames: this.partRecords.map((record) => record.name),
+              });
             })
             .catch((error) => {
               console.warn('[solidworks-assembly] part interaction disabled:', error);
@@ -266,6 +269,22 @@ Component({
         : record.basePosition;
       record.isExploded = moveToExploded;
       this.animatePartTo(record, target, moveToExploded ? 'exploded' : 'complete');
+    },
+
+    setPartPosition(name, mode) {
+      if (!this.ready || this.animating) return false;
+      const record = (this.partRecords || []).find((item) => item.name === name);
+      if (!record) return false;
+      const moveToExploded = mode === 'exploded';
+      record.isExploded = moveToExploded;
+      const target = moveToExploded
+        ? record.explodedPosition
+        : record.basePosition;
+      return this.animatePartTo(
+        record,
+        target,
+        moveToExploded ? 'exploded' : 'complete',
+      );
     },
 
     animatePartTo(record, target, state) {

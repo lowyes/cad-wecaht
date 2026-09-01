@@ -50,6 +50,10 @@ Page({
     assemblyLabel: config.label,
     animatedNodeCount: config.animatedNodeCount,
     interactivePartCount: 0,
+    partOptions: config.interactivePartNames,
+    selectedPartIndex: 0,
+    selectedPartName: config.interactivePartNames[0] || '',
+    partBusy: false,
     durationSeconds: config.durationMs / 1000,
   },
 
@@ -134,8 +138,14 @@ Page({
   handleInteractionReady({ detail = {} }) {
     this.interactionInitialized = true;
     const interactivePartCount = Number(detail.interactivePartCount) || 0;
+    const partOptions = Array.isArray(detail.interactivePartNames)
+      ? detail.interactivePartNames
+      : [];
     this.setData({
       interactivePartCount,
+      partOptions,
+      selectedPartIndex: 0,
+      selectedPartName: partOptions[0] || '',
       stateHint: interactivePartCount
         ? `${interactivePartCount} 个零件可点击定位与独立拖动`
         : '爆炸动画可用，当前模型没有可拖动零件',
@@ -218,10 +228,44 @@ Page({
       exploded: '零件已到拆卸位',
       complete: '零件已回装配位',
     };
-    this.setData({
+    const nextData = {
       stateLabel: actionLabels[detail.action] || '零件交互',
       stateHint: detail.name || '请选择一个零件',
+      partBusy: ['moving-out', 'moving-back', 'dragging'].includes(detail.action),
+    };
+    const selectedPartIndex = this.data.partOptions.indexOf(detail.name);
+    if (selectedPartIndex >= 0) {
+      nextData.selectedPartIndex = selectedPartIndex;
+      nextData.selectedPartName = detail.name;
+    }
+    this.setData(nextData);
+  },
+
+  handlePartPickerChange({ detail = {} }) {
+    const selectedPartIndex = Number(detail.value) || 0;
+    const selectedPartName = this.data.partOptions[selectedPartIndex] || '';
+    this.setData({
+      selectedPartIndex,
+      selectedPartName,
+      stateLabel: '已指定零件',
+      stateHint: selectedPartName || '请选择一个零件',
     });
+  },
+
+  handleSelectedPartAction(event) {
+    if (!this.data.ready || this.data.busy || this.data.partBusy) return;
+    const mode = event.currentTarget.dataset.mode;
+    const scene = this.selectComponent('#assemblyScene');
+    if (
+      !scene ||
+      !this.data.selectedPartName ||
+      typeof scene.setPartPosition !== 'function' ||
+      scene.setPartPosition(this.data.selectedPartName, mode) === false
+    ) {
+      wx.showToast({ title: '该零件交互尚未就绪', icon: 'none' });
+      return;
+    }
+    this.setData({ partBusy: true });
   },
 
   goBack() {
