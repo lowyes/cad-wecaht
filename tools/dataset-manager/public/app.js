@@ -3,6 +3,8 @@ const state = {
   editingId: '',
   imageFile: null,
   modelFile: null,
+  animationFile: null,
+  animationReport: null,
 };
 
 const elements = {
@@ -30,6 +32,12 @@ const elements = {
   dialogTitle: document.querySelector('#dialogTitle'),
   verifyOutput: document.querySelector('#verifyOutput'),
   closeDialog: document.querySelector('#closeDialog'),
+  assemblyId: document.querySelector('#assemblyId'),
+  animationFile: document.querySelector('#animationFile'),
+  animationDrop: document.querySelector('#animationDrop'),
+  animationStatus: document.querySelector('#animationStatus'),
+  animationEmpty: document.querySelector('#animationEmpty'),
+  animationReport: document.querySelector('#animationReport'),
 };
 
 function showToast(message, type = 'success') {
@@ -109,18 +117,26 @@ function renderTargets() {
           />
           <div class="target-info">
             <strong>${escapeHtml(target.modelId)}</strong>
-            <span>${target.image.width}×${target.image.height} · ${formatBytes(
-              target.model.bytes,
-            )}</span>
-            <span>fcode · ${escapeHtml(target.fcode)}</span>
+            <span>${target.image.width}×${target.image.height} · ${
+              target.model ? formatBytes(target.model.bytes) : '无 AR 模型'
+            }</span>
+            <span>${
+              target.targetType === 'assembly'
+                ? '装配图 · 跳转爆炸图'
+                : `fcode · ${escapeHtml(target.fcode)}`
+            }</span>
           </div>
           <div class="target-actions">
-            <button class="small-button" data-action="edit" data-id="${escapeHtml(
-              target.modelId,
-            )}">编辑</button>
+            ${
+              target.targetType === 'assembly'
+                ? '<span class="type-badge">ASSEMBLY</span>'
+                : `<button class="small-button" data-action="edit" data-id="${escapeHtml(
+                    target.modelId,
+                  )}">编辑</button>
             <button class="small-button danger" data-action="delete" data-id="${escapeHtml(
               target.modelId,
-            )}">删除</button>
+            )}">删除</button>`
+            }
           </div>
         </article>`,
     )
@@ -369,6 +385,173 @@ async function verifyAll() {
   }
 }
 
+function roleLabel(role) {
+  return (
+    {
+      explode: '拆卸 / 爆炸',
+      install: '安装 / 复位',
+      unknown: '待判定',
+    }[role] || role
+  );
+}
+
+function renderAnimationReport(report) {
+  state.animationReport = report;
+  elements.animationEmpty.classList.add('hidden');
+  elements.animationReport.classList.remove('hidden');
+  const transformClipCount = report.animations.filter(
+    (animation) => animation.hasTransformTracks,
+  ).length;
+  const animationCards = report.animations.length
+    ? report.animations
+        .map(
+          (animation) => `
+          <article class="clip-card">
+            <div class="clip-title">
+              <strong>${escapeHtml(animation.name)}</strong>
+              <span class="role-badge role-${escapeHtml(
+                animation.inferredRole,
+              )}">${escapeHtml(roleLabel(animation.inferredRole))}</span>
+            </div>
+            <div class="clip-stats">
+              <span><b>${
+                animation.durationSec == null
+                  ? '未知'
+                  : `${animation.durationSec.toFixed(2)}s`
+              }</b>时长</span>
+              <span><b>${animation.channelCount}</b>轨道</span>
+              <span><b>${animation.targetNodeCount}</b>节点</span>
+            </div>
+            <div class="track-row">
+              <span>位移 ${animation.tracks.translation}</span>
+              <span>旋转 ${animation.tracks.rotation}</span>
+              <span>缩放 ${animation.tracks.scale}</span>
+              <span>形变 ${animation.tracks.weights}</span>
+            </div>
+            <details>
+              <summary>查看受影响节点</summary>
+              <p>${
+                animation.targetNodes.length
+                  ? animation.targetNodes.map(escapeHtml).join(' · ')
+                  : '没有记录节点'
+              }</p>
+            </details>
+          </article>`,
+        )
+        .join('')
+    : '<div class="report-warning">该 GLB 没有 animations 数据，当前不能直接播放爆炸动画。</div>';
+  const messages = [...report.errors, ...report.warnings, ...report.manifest.notes];
+  elements.animationReport.innerHTML = `
+    <div class="report-summary">
+      <div>
+        <span>动画片段</span>
+        <strong>${report.counts.animations}</strong>
+      </div>
+      <div>
+        <span>变换动画</span>
+        <strong>${transformClipCount}</strong>
+      </div>
+      <div>
+        <span>网格 / 节点</span>
+        <strong>${report.counts.meshes} / ${report.counts.nodes}</strong>
+      </div>
+      <div>
+        <span>自动判定</span>
+        <strong class="summary-word">${
+          report.manifest.explodeClip ? '可生成配置' : '需补动画'
+        }</strong>
+      </div>
+    </div>
+    <div class="clip-list">${animationCards}</div>
+    ${
+      messages.length
+        ? `<div class="report-notes">${messages
+            .map((message) => `<p>${escapeHtml(message)}</p>`)
+            .join('')}</div>`
+        : ''
+    }
+    <div class="manifest-card">
+      <div>
+        <span>推荐拆卸轨道</span>
+        <strong>${escapeHtml(report.manifest.explodeClip || '未确定')}</strong>
+      </div>
+      <div>
+        <span>安装方式</span>
+        <strong>${escapeHtml(
+          report.manifest.installClip ||
+            (report.manifest.installMode === 'reverse-explode'
+              ? '反向播放拆卸轨道'
+              : '未确定'),
+        )}</strong>
+      </div>
+      <div class="manifest-actions">
+        <button class="small-button" data-animation-action="copy" type="button">复制配置</button>
+        <button class="primary-button compact" data-animation-action="download" type="button">下载 JSON</button>
+      </div>
+    </div>`;
+}
+
+async function inspectAnimationFile(file) {
+  try {
+    await validateModel(file);
+    if (file.size > 70 * 1024 * 1024) {
+      throw new Error('单个 GLB 请控制在 70MB 以内');
+    }
+    state.animationFile = file;
+    elements.animationStatus.textContent = `${file.name} · ${formatBytes(
+      file.size,
+    )} · 正在解析轨道…`;
+    elements.animationDrop.classList.add('analyzing');
+    const model = await fileToDataUrl(file);
+    const payload = await api('/api/inspect-animation', {
+      method: 'POST',
+      body: JSON.stringify({
+        assemblyId: elements.assemblyId.value.trim(),
+        model,
+      }),
+    });
+    elements.animationStatus.textContent = `${file.name} · ${formatBytes(
+      file.size,
+    )} · 解析完成`;
+    renderAnimationReport(payload.report);
+    showToast('动画轨道解析完成');
+  } catch (error) {
+    state.animationFile = null;
+    state.animationReport = null;
+    elements.animationStatus.textContent = error.message;
+    elements.animationReport.classList.add('hidden');
+    elements.animationEmpty.classList.remove('hidden');
+    showToast(error.message, 'error');
+  } finally {
+    elements.animationDrop.classList.remove('analyzing');
+  }
+}
+
+function animationManifestJson() {
+  if (!state.animationReport) return '';
+  return JSON.stringify(state.animationReport.manifest, null, 2);
+}
+
+async function copyManifest() {
+  const content = animationManifestJson();
+  if (!content) return;
+  await navigator.clipboard.writeText(content);
+  showToast('动画配置已复制');
+}
+
+function downloadManifest() {
+  const content = animationManifestJson();
+  if (!content) return;
+  const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
+  const link = document.createElement('a');
+  const assemblyId = state.animationReport.manifest.assemblyId || 'assembly';
+  link.href = URL.createObjectURL(blob);
+  link.download = `${assemblyId}_animation.json`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+  showToast('动画配置已下载');
+}
+
 elements.form.addEventListener('submit', submitTarget);
 elements.cancelEdit.addEventListener('click', resetForm);
 elements.refreshButton.addEventListener('click', loadTargets);
@@ -380,8 +563,18 @@ elements.targetList.addEventListener('click', (event) => {
   if (button.dataset.action === 'edit') startEdit(button.dataset.id);
   if (button.dataset.action === 'delete') removeTarget(button.dataset.id);
 });
+elements.animationReport.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-animation-action]');
+  if (!button) return;
+  if (button.dataset.animationAction === 'copy') copyManifest();
+  if (button.dataset.animationAction === 'download') downloadManifest();
+});
 
 wireDropZone(elements.imageDrop, elements.imageFile, chooseImage);
 wireDropZone(elements.modelDrop, elements.modelFile, chooseModel);
+wireDropZone(
+  elements.animationDrop,
+  elements.animationFile,
+  inspectAnimationFile,
+);
 loadTargets();
-

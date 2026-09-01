@@ -1,0 +1,109 @@
+<view class="page">
+  <assembly-explosion-scene
+    id="assemblyScene"
+    class="xr-scene"
+    width="{{renderWidth}}"
+    height="{{renderHeight}}"
+    style="position:fixed;left:0;top:0;z-index:1;width:{{viewWidth}}px;height:{{viewHeight}}px;"
+    bind:scene-ready="handleSceneReady"
+    bind:assets-progress="handleAssetsProgress"
+    bind:assets-loaded="handleAssetsLoaded"
+    bind:part-loaded="handlePartLoaded"
+    bind:model-error="handleModelError"
+    bind:animation-start="handleAnimationStart"
+    bind:animation-end="handleAnimationEnd"
+  />
+
+  <view class="ambient-glow glow-left"></view>
+  <view class="ambient-glow glow-right"></view>
+
+  <view class="top-bar">
+    <view class="back-button" hover-class="button-hover" bindtap="goBack">‹</view>
+    <view class="title-group">
+      <text class="eyebrow">ASSEMBLY LAB</text>
+      <text class="title">装配体爆炸图</text>
+    </view>
+    <view class="demo-badge">DEMO</view>
+  </view>
+
+  <view class="part-legend" wx:if="{{ready}}">
+    <view class="legend-item"><view class="legend-dot orange"></view><text>定位销</text></view>
+    <view class="legend-item"><view class="legend-dot green"></view><text>支座</text></view>
+    <view class="legend-item"><view class="legend-dot blue"></view><text>底座</text></view>
+  </view>
+
+  <view class="state-card {{busy ? 'busy' : ''}}">
+    <view class="state-icon">
+      <view class="state-ring"></view>
+      <view class="state-core"></view>
+    </view>
+    <view class="state-copy">
+      <text class="state-label">{{stateLabel}}</text>
+      <text class="state-hint">{{stateHint}}</text>
+    </view>
+  </view>
+
+  <view class="interaction-tip" wx:if="{{ready && !busy}}">
+    单指拖动旋转 · 双指捏合缩放
+  </view>
+
+  <view class="control-panel">
+    <view class="mode-grid">
+      <view
+        class="mode-button {{activeAction === 'install' ? 'active' : ''}} {{busy ? 'disabled' : ''}}"
+        hover-class="button-hover"
+        data-action="install"
+        bindtap="handleModeTap"
+      >
+        <view class="mode-icon install-icon"><view></view><view></view><view></view></view>
+        <text class="mode-title">安装</text>
+        <text class="mode-subtitle">逐件归位</text>
+      </view>
+      <view
+        class="mode-button {{activeAction === 'explode' ? 'active' : ''}} {{busy ? 'disabled' : ''}}"
+        hover-class="button-hover"
+        data-action="explode"
+        bindtap="handleModeTap"
+      >
+        <view class="mode-icon explode-icon"><view></view><view></view><view></view></view>
+        <text class="mode-title">拆卸</text>
+        <text class="mode-subtitle">爆炸动画</text>
+      </view>
+      <view
+        class="mode-button {{activeAction === 'section' ? 'active' : ''}} {{busy ? 'disabled' : ''}}"
+        hover-class="button-hover"
+        data-action="section"
+        bindtap="handleModeTap"
+      >
+        <view class="mode-icon section-icon"><view></view><view></view></view>
+        <text class="mode-title">剖面</text>
+        <text class="mode-subtitle">分层观察</text>
+      </view>
+      <view
+        class="mode-button {{activeAction === 'complete' ? 'active' : ''}} {{busy ? 'disabled' : ''}}"
+        hover-class="button-hover"
+        data-action="complete"
+        bindtap="handleModeTap"
+      >
+        <view class="mode-icon complete-icon"><view></view></view>
+        <text class="mode-title">完整</text>
+        <text class="mode-subtitle">恢复原位</text>
+      </view>
+    </view>
+    <view class="demo-note">
+      当前装配体：{{assemblyLabel}} · 三个独立 GLB 分件按预设装配路线运动。
+    </view>
+  </view>
+
+  <cover-view class="loading-screen" wx:if="{{loading}}">
+    <cover-view class="loading-mark">
+      <cover-view class="loading-orbit"></cover-view>
+      <cover-view class="loading-core">3D</cover-view>
+    </cover-view>
+    <cover-view class="loading-title">正在装配三维场景</cover-view>
+    <cover-view class="loading-copy">{{loadingText}}</cover-view>
+    <cover-view class="progress-track">
+      <cover-view class="progress-value" style="width:{{progress}}%;"></cover-view>
+    </cover-view>
+  </cover-view>
+</view>

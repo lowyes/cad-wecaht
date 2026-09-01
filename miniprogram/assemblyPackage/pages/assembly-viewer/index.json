@@ -1,0 +1,7 @@
+{
+  "navigationStyle": "custom",
+  "disableScroll": true,
+  "usingComponents": {
+    "solidworks-explosion-scene": "/assemblyPackage/components/solidworks-explosion-scene/index"
+  }
+}

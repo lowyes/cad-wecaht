@@ -310,6 +310,52 @@ page {
   line-height: 1;
 }
 
+.assembly-action {
+  min-height: 112rpx;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  margin-bottom: 20rpx;
+  padding: 20rpx 28rpx;
+  border: 1rpx solid rgba(34, 211, 238, 0.42);
+  border-radius: 30rpx;
+  color: #f8fafc;
+  background: linear-gradient(135deg, rgba(8, 47, 73, 0.92), rgba(49, 46, 129, 0.9));
+  box-shadow: 0 16rpx 48rpx rgba(14, 165, 233, 0.28);
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.assembly-action-hover {
+  opacity: 0.82;
+  transform: scale(0.97);
+}
+
+.assembly-action-copy {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.assembly-action-kicker {
+  color: #67e8f9;
+  font-size: 17rpx;
+  letter-spacing: 3rpx;
+}
+
+.assembly-action-title {
+  margin-top: 5rpx;
+  font-size: 27rpx;
+  font-weight: 700;
+  letter-spacing: 2rpx;
+}
+
+.assembly-action-arrow {
+  margin-left: 20rpx;
+  color: #a5f3fc;
+  font-size: 52rpx;
+  font-weight: 300;
+}
+
 .hint-card {
   padding: 20rpx 28rpx;
   border: 1rpx solid rgba(148, 163, 184, 0.12);

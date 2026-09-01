@@ -1,0 +1,64 @@
+<xr-scene
+  id="xrScene"
+  class="scene"
+  bind:ready="handleSceneReady"
+  bind:log="handleSceneLog"
+>
+  <xr-assets
+    bind:progress="handleAssetsProgress"
+    bind:loaded="handleAssetCollectionLoaded"
+    bind:error="handleAssetsError"
+  >
+    <xr-asset-post-process asset-id="assembly-fxaa" type="fxaa" />
+    <xr-asset-load
+      type="gltf"
+      asset-id="{{assetId}}"
+      src="{{modelSrc}}"
+      options="ignoreError: -1"
+    />
+  </xr-assets>
+
+  <xr-node
+    id="assembly-root"
+    node-id="assembly-root"
+    rotation="{{rotationText}}"
+  >
+    <xr-gltf
+      id="assembly-model"
+      node-id="assembly-model"
+      model="{{assetId}}"
+      position="0 0 0"
+      scale="{{modelScale}} {{modelScale}} {{modelScale}}"
+      bind:gltf-loaded="handleGltfLoaded"
+      bind:gltf-error="handleGltfError"
+      bind:anim-stop="handleAnimationStop"
+    />
+  </xr-node>
+
+  <xr-node node-id="look-target" position="0 0.03 0"></xr-node>
+  <xr-mesh
+    geometry="plane"
+    position="0 -0.88 0"
+    rotation="-90 0 0"
+    scale="4.6 4.6 4.6"
+    uniforms="u_baseColorFactor:0.025 0.055 0.105 1"
+  />
+
+  <xr-camera
+    id="camera"
+    node-id="camera"
+    position="0.72 0.55 2.85"
+    target="look-target"
+    near="0.01"
+    far="100"
+    clear-color="0.012 0.024 0.06 1"
+    post-process="assembly-fxaa"
+    camera-orbit-control
+  />
+
+  <xr-node node-id="lights">
+    <xr-light type="ambient" color="0.88 0.93 1" intensity="1.25" />
+    <xr-light type="directional" rotation="34 -38 0" color="1 0.9 0.78" intensity="3" />
+    <xr-light type="directional" rotation="-24 142 0" color="0.38 0.72 1" intensity="1.7" />
+  </xr-node>
+</xr-scene>

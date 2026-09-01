@@ -24,9 +24,9 @@ const appConfig = JSON.parse(
   fs.readFileSync(path.join(miniprogramRoot, 'app.json'), 'utf8'),
 );
 check(
-  appConfig.pages.length === 1 &&
-    appConfig.pages[0] === 'pages/ar-viewer/ar-viewer',
-  '应用仅注册本地 AR 页面',
+  appConfig.pages[0] === 'pages/ar-viewer/ar-viewer' &&
+    appConfig.pages.includes('pages/assembly-demo/assembly-demo'),
+  '应用保留本地 AR 首页并注册独立爆炸图 Demo',
 );
 
 check(AR_TARGETS.length > 0, `本地目标清单包含 ${AR_TARGETS.length} 项`);
@@ -35,17 +35,25 @@ check(
     AR_TARGETS.length,
   'modelId 没有重复',
 );
+const partTargets = AR_TARGETS.filter((target) => target.targetType === 'part');
 check(
-  new Set(AR_TARGETS.map((target) => target.modelAssetId)).size ===
-    AR_TARGETS.length,
-  'modelAssetId 没有重复',
+  new Set(partTargets.map((target) => target.modelAssetId)).size ===
+    partTargets.length &&
+    AR_TARGETS.filter((target) => target.targetType === 'assembly').every(
+      (target) => !target.modelAssetId,
+    ),
+  '零件 modelAssetId 没有重复，装配目标不占用模型资源',
+);
+
+check(
+  AR_TARGETS.some((target) => target.targetType === 'part') &&
+    AR_TARGETS.some((target) => target.targetType === 'assembly'),
+  '目标库同时包含零件图和装配图两种分流',
 );
 
 for (const target of AR_TARGETS) {
   const markerPath = resolveMiniProgramPath(target.markerSrc);
-  const modelPath = resolveMiniProgramPath(target.modelSrc);
   const marker = fs.readFileSync(markerPath);
-  const model = fs.readFileSync(modelPath);
 
   const markerIsPng =
     marker.subarray(0, 8).toString('hex') === '89504e470d0a1a0a';
@@ -64,6 +72,16 @@ for (const target of AR_TARGETS) {
     );
   }
 
+  if (target.targetType === 'assembly') {
+    check(
+      !target.hasModel && Boolean(target.assemblyId),
+      `${target.modelId} 识别后只跳转爆炸图，不加载 AR 模型`,
+    );
+    continue;
+  }
+
+  const modelPath = resolveMiniProgramPath(target.modelSrc);
+  const model = fs.readFileSync(modelPath);
   const modelIsGlb =
     model.subarray(0, 4).toString('ascii') === 'glTF' &&
     model.readUInt32LE(4) === 2 &&

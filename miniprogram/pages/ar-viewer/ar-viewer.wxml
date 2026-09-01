@@ -87,7 +87,7 @@
   />
 
   <view
-    wx:if="{{recognizedModelId}}"
+    wx:if="{{recognizedModelId && recognizedTargetType === 'part'}}"
     class="gesture-layer"
     bindtouchstart="handleGestureStart"
     catchtouchmove="handleGestureMove"
@@ -204,7 +204,7 @@
   </view>
 
   <view class="controls" wx:if="{{arStarted && !hasError}}">
-    <view class="tool-row" wx:if="{{recognizedModelId}}">
+    <view class="tool-row" wx:if="{{recognizedModelId && recognizedTargetType === 'part'}}">
       <view class="tool-button" hover-class="glass-hover" bindtap="scaleDown">缩小</view>
       <view class="tool-button" hover-class="glass-hover" bindtap="rotateModel">旋转</view>
       <view class="tool-button" hover-class="glass-hover" bindtap="scaleUp">放大</view>
@@ -213,15 +213,30 @@
     <view
       class="diwei-button"
       hover-class="diwei-button-hover"
-      wx:if="{{recognizedModelId}}"
+      wx:if="{{recognizedModelId && recognizedTargetType === 'part'}}"
       bindtap="goToDiweiMiniProgram"
     >
       <text class="diwei-button-label">打开迪威模型</text>
       <text class="diwei-button-arrow">›</text>
     </view>
+    <view
+      class="assembly-action"
+      hover-class="assembly-action-hover"
+      wx:if="{{recognizedModelId && recognizedTargetType === 'assembly'}}"
+      bindtap="openRecognizedAssembly"
+    >
+      <view class="assembly-action-copy">
+        <text class="assembly-action-kicker">ASSEMBLY DETECTED</text>
+        <text class="assembly-action-title">查看{{recognizedTargetLabel}}爆炸图</text>
+      </view>
+      <text class="assembly-action-arrow">›</text>
+    </view>
     <view class="hint-card">
       <text wx:if="{{modelWarning}}">
         {{modelWarning}}
+      </text>
+      <text wx:elif="{{recognizedTargetType === 'assembly'}}">
+        装配图只用于识别与跳转，不在相机画面叠加 AR 模型
       </text>
       <text wx:elif="{{recognizedModelId}}">
         单指拖动可旋转模型，双指捏合可缩放

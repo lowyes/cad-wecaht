@@ -40,6 +40,47 @@
         </article>
       </section>
 
+      <section class="panel inspector-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="section-label">GLB ANIMATION INSPECTOR</p>
+            <h2>装配动画轨道检查器</h2>
+          </div>
+          <span class="local-badge">本机解析 · 不上传云端</span>
+        </div>
+        <div class="inspector-body">
+          <div class="inspector-inputs">
+            <label class="field inspector-id-field">
+              <span>装配体编号</span>
+              <input
+                id="assemblyId"
+                value="assembly_0001"
+                placeholder="例如 assembly_0001"
+                autocomplete="off"
+              />
+              <small>用于生成小程序动画配置</small>
+            </label>
+            <label class="animation-drop" id="animationDrop">
+              <input
+                id="animationFile"
+                type="file"
+                accept=".glb,model/gltf-binary"
+              />
+              <span class="animation-icon" aria-hidden="true">▶</span>
+              <span>
+                <strong>选择或拖入装配体 GLB</strong>
+                <small id="animationStatus">自动读取动画片段、轨道类型、节点和时长</small>
+              </span>
+            </label>
+          </div>
+          <div id="animationEmpty" class="inspector-empty">
+            <strong>导入 SolidWorks / Blender 导出的 GLB</strong>
+            <span>工具会自动判断是否包含拆卸、安装、位移、旋转和缩放轨道。</span>
+          </div>
+          <div id="animationReport" class="animation-report hidden"></div>
+        </div>
+      </section>
+
       <main class="workspace">
         <section class="panel form-panel">
           <div class="panel-heading">

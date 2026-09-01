@@ -45,7 +45,7 @@
       bind:ar-tracker-state="handleTrackerState"
     >
       <xr-gltf
-        wx:if="{{item.hasModel && item.modelUsable && modelReady}}"
+        wx:if="{{item.targetType === 'part' && item.hasModel && item.modelUsable && modelReady}}"
         data-model-id="{{item.modelId}}"
         model="{{item.modelAssetId}}"
         position="0 0.04 0"
@@ -55,7 +55,7 @@
         bind:gltf-error="handleGltfError"
       />
       <xr-mesh
-        wx:else
+        wx:elif="{{item.targetType === 'part'}}"
         geometry="cube"
         position="0 0.04 0"
         scale="0.12 0.04 0.08"

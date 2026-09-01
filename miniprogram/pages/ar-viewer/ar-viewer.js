@@ -2,6 +2,7 @@ const diweiConfig = require('../../config/diwei');
 const {
   AR_TARGETS,
   getFcodeByModelId,
+  getTargetByModelId,
 } = require('../../config/model_fcode_map');
 const {
   createTrackingStabilizer,
@@ -29,6 +30,9 @@ Page({
     modelReady: false,
     modelWarning: '',
     recognizedModelId: '',
+    recognizedTargetType: '',
+    recognizedTargetLabel: '',
+    recognizedAssemblyId: '',
     viewWidth: 375,
     viewHeight: 667,
     renderWidth: 750,
@@ -90,6 +94,9 @@ Page({
       arReady: false,
       modelReady: false,
       recognizedModelId: '',
+      recognizedTargetType: '',
+      recognizedTargetLabel: '',
+      recognizedAssemblyId: '',
       launchProgress: 8,
       startupSlow: false,
       loadingText: '正在建立本地 AR 场景…',
@@ -137,6 +144,9 @@ Page({
       arReady: false,
       isLoading: false,
       recognizedModelId: '',
+      recognizedTargetType: '',
+      recognizedTargetLabel: '',
+      recognizedAssemblyId: '',
       statusText: '返回后将重新连接相机',
     });
   },
@@ -280,10 +290,17 @@ Page({
 
   applyStableTarget(modelId, meta = {}) {
     if (this.data.recognizedModelId === modelId) return;
+    const target = getTargetByModelId(modelId);
+    const isAssembly = target && target.targetType === 'assembly';
     this.setData({
       recognizedModelId: modelId,
+      recognizedTargetType: target ? target.targetType : '',
+      recognizedTargetLabel: target ? target.label : '',
+      recognizedAssemblyId: isAssembly ? target.assemblyId : '',
       statusText: modelId
-        ? `识别成功：${modelId}`
+        ? isAssembly
+          ? `识别成功：${target.label}，可查看爆炸图`
+          : `识别成功：${target ? target.label : modelId}`
         : '目标丢失，请重新对准完整工程图',
     });
     this.recordPerformanceStage(
@@ -389,6 +406,17 @@ Page({
         console.error('[AR navigateToMiniProgram] 跳转失败:', error);
         wx.showToast({ title: '跳转失败，请检查小程序权限', icon: 'none' });
       },
+    });
+  },
+
+  openRecognizedAssembly() {
+    const assemblyId = this.data.recognizedAssemblyId;
+    if (!assemblyId) {
+      wx.showToast({ title: '请先识别装配图', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({
+      url: `/assemblyPackage/pages/assembly-viewer/index?assemblyId=${encodeURIComponent(assemblyId)}`,
     });
   },
 

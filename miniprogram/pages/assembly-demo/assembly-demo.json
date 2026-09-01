@@ -1,0 +1,8 @@
+{
+  "navigationStyle": "custom",
+  "disableScroll": true,
+  "renderer": "webview",
+  "usingComponents": {
+    "assembly-explosion-scene": "../../components/assembly-explosion-scene/index"
+  }
+}

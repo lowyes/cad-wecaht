@@ -176,3 +176,74 @@
   - `python tools/analyze_ar_targets.py`
 - 已知限制：XR-FRAME 相机识别、锚点抖动与真实重捕获耗时仍必须通过微信真机预览
   验证；桌面自动化只能验证状态机和资源完整性。
+
+## 2026-09-01：零件 AR 与装配爆炸图分流 Demo
+
+- 业务流程明确分为两类本地目标：
+  - `part` 零件图：保持原 XR-FRAME Marker 跟踪，并在图上叠加对应 GLB。
+  - `assembly` 装配图：只做本地识别，不在相机画面叠加模型；识别成功后显示
+    “查看爆炸图”入口。
+- 新增确定性生成的 `assembly_demo_0001` 装配工程图，不使用四角定位码；图中包含
+  主视图、俯视图、零件序号、明细表和标题栏，以提供足够的自然局部特征。
+- 为该装配图单独生成底座、支座、定位销三个独立 GLB，不再复用
+  `part_0001/0002/0003` 模拟装配关系。
+- 爆炸图页面支持安装、拆卸、剖面、完整四种状态以及拖动旋转、捏合缩放。
+- 资源生成脚本：`tools/generate_assembly_demo_assets.js`；运行目标与原 AR 链路均保持
+  纯前端、无上传、无后端。
+- Verification commands run:
+  - `node tools/test_assembly_demo.js`
+  - `node tools/verify_local_ar.js`
+  - `node tools/test_tracking_stabilizer.js`
+  - `node tools/test_ar_viewer_runtime.js`
+
+## 2026-09-01：GLB 动画轨道自动检查器
+
+- 在离线“AR 数据集管理器”中增加装配动画检查面板，可直接拖入
+  SolidWorks / Blender 导出的 GLB。
+- 解析 glTF 2.0 `animations` / `channels` / `samplers` / `accessors`，输出
+  每个片段的时长、位移/旋转/缩放/形变轨道数和受影响节点。
+- 按动画名自动判定拆卸与安装轨道；仅有一条变换动画时，生成
+  `reverse-explode` 安装建议，并支持复制或下载 JSON 配置。
+- 检查仅访问本机 `127.0.0.1`，不改写也不上传 GLB。
+- 同时修复数据集管理器对 `assembly` 目标无 `modelSrc` 时的兼容，避免
+  装配目标导致清单接口失败。
+- Verification commands run:
+  - `node tools/test_glb_animation_inspector.js`
+  - `node tools/verify_local_ar.js`
+  - 本地 HTTP 回归：4 个目标可正常列出，无动画 GLB 正确报告 0 条轨道。
+  - 浏览器 UI 实测：导入 GLB 后生成报告，无水平溢出且无控制台错误。
+
+## 2026-09-01：装配爆炸图清晰度修复
+
+- 根据真机 `pixelRatio` 计算 XR-FRAME 物理渲染尺寸，将 `renderWidth` /
+  `renderHeight` 传给装配场景组件，避免默认低分辨率画布被全屏放大。
+- 装配场景加入 XR-FRAME `fxaa` 后处理，对模型轮廓进行抗锯齿。
+- 控制台输出实际视口、像素密度和渲染尺寸，便于真机诊断。
+- Verification commands run:
+  - `node --check miniprogram/pages/assembly-demo/assembly-demo.js`
+  - `node tools/test_assembly_demo.js`
+  - `node tools/verify_local_ar.js`
+
+## 2026-09-01：接入 SolidWorks 真实减速器爆炸视图
+
+- 接收并解析 SolidWorks 导出的多文件 glTF 资源包：71 个节点、59 个原始网格、
+  46 个材质，以及动画片段 `爆炸视图1`。
+- 原始爆炸动画总长 4 秒，包含 58 条位移轨道，覆盖 58 个具名装配节点；小程序中
+  “拆卸”正向播放该轨道，“安装”反向播放该轨道。
+- 新增 `tools/prepare_solidworks_gltf.js`：移除 XR-FRAME 无法直接使用的 DDS 法线贴图
+  绑定、SolidWorks 查看器私有扩展和失去引用的纹理项，不改写源文件。
+- 使用 gltfpack 保留节点名和动画，将约 44 MB 的多文件导出资源整理为
+  `assemblyPackage/assets/assembly_0001.glb`（1,704,460 bytes）；优化后为
+  35 个网格、156,744 个三角面。
+- 新增独立分包 `assemblyPackage`，分包总大小 1,720,189 bytes，避免真实装配体占用
+  小程序主包；AR 识别装配图后的按钮现跳转到该真实爆炸视图页面。
+- 真实模型只有一条爆炸动画，没有独立剖切轨道，因此第三个按钮明确显示为“分层”，
+  通过停在动画 52% 位置观察内部结构，不冒充真实剖面。
+- 当前装配体模型已替换为真实 SolidWorks 数据，但装配识别仍暂用项目生成的
+  `assembly_demo_0001_target.png`。取得实际装配工程图后，应将其作为同一目标的新
+  Marker 重新真机测试。
+- Verification commands run:
+  - `node tools/test_assembly_demo.js`
+  - `node tools/test_glb_animation_inspector.js`
+  - `node tools/verify_local_ar.js`
+  - `git diff --check`

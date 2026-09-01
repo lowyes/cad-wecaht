@@ -2,6 +2,9 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
+const {
+  inspectGlbAnimation,
+} = require('./glb-animation-inspector');
 
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.AR_DATASET_MANAGER_PORT || 4180);
@@ -22,7 +25,7 @@ const scenePath = path.join(
 const markerRoot = path.join(miniprogramRoot, 'assets', 'markers');
 const modelRoot = path.join(miniprogramRoot, 'assets', 'models');
 const backupRoot = path.join(projectRoot, 'dataset_backups');
-const MAX_BODY_BYTES = 64 * 1024 * 1024;
+const MAX_BODY_BYTES = 96 * 1024 * 1024;
 const MODEL_ID_PATTERN = /^part_\d{4,}$/;
 const COLOR_PATTERN =
   /^(?:0(?:\.\d+)?|1(?:\.0+)?) (?:0(?:\.\d+)?|1(?:\.0+)?) (?:0(?:\.\d+)?|1(?:\.0+)?) (?:0(?:\.\d+)?|1(?:\.0+)?)$/;
@@ -91,7 +94,7 @@ function readRequestJson(request) {
     request.on('data', (chunk) => {
       total += chunk.length;
       if (total > MAX_BODY_BYTES) {
-        reject(new Error('上传内容超过 64MB 限制'));
+        reject(new Error('上传内容超过 96MB 限制'));
         request.destroy();
         return;
       }
@@ -180,17 +183,20 @@ function inspectTarget(target, fcodes) {
     miniprogramRoot,
     target.markerSrc.replace(/^[/\\]+/, ''),
   );
-  const modelPath = safeJoin(
-    miniprogramRoot,
-    target.modelSrc.replace(/^[/\\]+/, ''),
-  );
   const markerBuffer = fs.readFileSync(markerPath);
-  const modelBuffer = fs.readFileSync(modelPath);
+  let model = null;
+  if (target.hasModel && target.modelSrc) {
+    const modelPath = safeJoin(
+      miniprogramRoot,
+      target.modelSrc.replace(/^[/\\]+/, ''),
+    );
+    model = inspectGlb(fs.readFileSync(modelPath));
+  }
   return {
     ...target,
     fcode: fcodes[target.modelId] || '',
     image: inspectPng(markerBuffer),
-    model: inspectGlb(modelBuffer),
+    model,
   };
 }
 
@@ -235,22 +241,31 @@ function createBackup(reason) {
 
 function generateConfig(targets, fcodes) {
   const fcodeLines = targets
+    .filter((target) => target.targetType !== 'assembly')
     .map(
       (target) =>
         `  '${target.modelId}': ${JSON.stringify(fcodes[target.modelId] || '')},`,
     )
     .join('\n');
   const targetLines = targets
-    .map(
-      (target) => `  {
-    modelId: ${JSON.stringify(target.modelId)},
-    markerSrc: ${JSON.stringify(target.markerSrc)},
-    modelSrc: ${JSON.stringify(target.modelSrc)},
-    modelAssetId: ${JSON.stringify(target.modelAssetId)},
-    hasModel: ${Boolean(target.hasModel)},
-    placeholderColor: ${JSON.stringify(target.placeholderColor)},
-  },`,
-    )
+    .map((target) => {
+      const entries = [
+        ['modelId', target.modelId],
+        ['label', target.label],
+        ['targetType', target.targetType || 'part'],
+        ['assemblyId', target.assemblyId],
+        ['markerSrc', target.markerSrc],
+        ['originalMarkerSrc', target.originalMarkerSrc],
+        ['markerVariant', target.markerVariant],
+        ['modelSrc', target.modelSrc],
+        ['modelAssetId', target.modelAssetId],
+        ['hasModel', Boolean(target.hasModel)],
+        ['placeholderColor', target.placeholderColor],
+      ].filter(([, value]) => value !== undefined);
+      return `  {\n${entries
+        .map(([key, value]) => `    ${key}: ${JSON.stringify(value)},`)
+        .join('\n')}\n  },`;
+    })
     .join('\n');
 
   return `/**
@@ -273,16 +288,25 @@ function getFcodeByModelId(modelId) {
   return MODEL_FCODE_MAP[modelId] || null;
 }
 
+function getTargetByModelId(modelId) {
+  if (!modelId) return null;
+  return AR_TARGETS.find((target) => target.modelId === modelId) || null;
+}
+
 module.exports = {
   AR_TARGETS,
   MODEL_FCODE_MAP,
   getFcodeByModelId,
+  getTargetByModelId,
 };
 `;
 }
 
 function generateAssetRegion(targets) {
   const blocks = targets
+    .filter(
+      (target) => target.hasModel && target.modelAssetId && target.modelSrc,
+    )
     .map(
       (target) => `    <xr-asset-load
       type="gltf"
@@ -363,6 +387,8 @@ function saveTarget(payload) {
 
   const target = {
     modelId: normalized.modelId,
+    label: `零件 ${normalized.modelId.replace(/^part_/, '')}`,
+    targetType: 'part',
     markerSrc: `/assets/markers/${normalized.modelId}_ar_target.png`,
     modelSrc: `/assets/models/${normalized.modelId}/model_plain.glb`,
     modelAssetId: `${normalized.modelId.replace(/_/g, '-')}-model`,
@@ -416,19 +442,24 @@ function deleteTarget(modelId) {
 }
 
 function runVerifier() {
-  const result = spawnSync(
-    process.execPath,
-    [path.join(projectRoot, 'tools', 'verify_local_ar.js')],
-    {
+  const scripts = [
+    path.join(projectRoot, 'tools', 'verify_local_ar.js'),
+    path.join(projectRoot, 'tools', 'test_glb_animation_inspector.js'),
+  ];
+  const results = scripts.map((scriptPath) =>
+    spawnSync(process.execPath, [scriptPath], {
       cwd: projectRoot,
       encoding: 'utf8',
       timeout: 60_000,
-    },
+    }),
   );
   return {
-    ok: result.status === 0,
-    status: result.status,
-    output: `${result.stdout || ''}${result.stderr || ''}`.trim(),
+    ok: results.every((result) => result.status === 0),
+    status: results.find((result) => result.status !== 0)?.status || 0,
+    output: results
+      .map((result) => `${result.stdout || ''}${result.stderr || ''}`.trim())
+      .filter(Boolean)
+      .join('\n'),
   };
 }
 
@@ -460,6 +491,22 @@ async function handleApi(request, response, pathname) {
   if (request.method === 'POST' && pathname === '/api/verify') {
     const result = runVerifier();
     sendJson(response, result.ok ? 200 : 422, result);
+    return;
+  }
+  if (request.method === 'POST' && pathname === '/api/inspect-animation') {
+    const payload = await readRequestJson(request);
+    const modelBuffer = decodeUpload(payload.model, '装配体 GLB');
+    const report = inspectGlbAnimation(modelBuffer, {
+      fileName: payload.model && payload.model.name,
+      assemblyId: String(payload.assemblyId || '').trim() || undefined,
+    });
+    sendJson(response, report.valid ? 200 : 422, {
+      ok: report.valid,
+      report,
+      message: report.valid
+        ? '动画轨道解析完成'
+        : report.errors.join('\n'),
+    });
     return;
   }
   sendJson(response, 404, { ok: false, message: '接口不存在' });
@@ -508,4 +555,3 @@ server.listen(PORT, HOST, () => {
     child.unref();
   }
 });
-
