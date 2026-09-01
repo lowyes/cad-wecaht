@@ -30,7 +30,6 @@
       scale="{{modelScale}} {{modelScale}} {{modelScale}}"
       bind:gltf-loaded="handleGltfLoaded"
       bind:gltf-error="handleGltfError"
-      bind:anim-stop="handleAnimationStop"
     />
   </xr-node>
 

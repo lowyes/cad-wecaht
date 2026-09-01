@@ -139,10 +139,11 @@ const solidworksComponent = fs.readFileSync(
   ),
   'utf8',
 );
-assert(solidworksComponent.includes("playAnimation('backwards'"));
-assert(solidworksComponent.includes("playAnimation('forwards'"));
 assert(solidworksComponent.includes('pauseToFrame'));
 assert(solidworksComponent.includes('config.clipNames'));
+assert(solidworksComponent.includes("animateToProgress(0, 'complete')"));
+assert(solidworksComponent.includes("animateToProgress(1, 'exploded')"));
+assert(!solidworksComponent.includes("direction: 'backwards'"));
 const solidworksConfig = require(path.join(
   projectRoot,
   'miniprogram',
@@ -178,6 +179,72 @@ const solidworksViewerSource = fs.readFileSync(
 );
 assert(solidworksViewerSource.includes('startLoadWatchdog'));
 assert(solidworksViewerSource.includes('retryLoad'));
+
+let componentDefinition = null;
+const originalComponent = global.Component;
+global.Component = (definition) => {
+  componentDefinition = definition;
+};
+delete require.cache[require.resolve(
+  path.join(
+    projectRoot,
+    'miniprogram',
+    'assemblyPackage',
+    'components',
+    'solidworks-explosion-scene',
+    'index.js',
+  ),
+)];
+require(path.join(
+  projectRoot,
+  'miniprogram',
+  'assemblyPackage',
+  'components',
+  'solidworks-explosion-scene',
+  'index.js',
+));
+global.Component = originalComponent;
+
+const sampledProgress = [];
+const componentInstance = {
+  ...componentDefinition.methods,
+  ready: true,
+  disposed: false,
+  animator: {
+    stop() {},
+    play() {},
+    pauseToFrame(name, progress) {
+      if (name === 'gltfAnimation') sampledProgress.push(progress);
+    },
+  },
+  triggerEvent() {},
+};
+const originalNow = Date.now;
+const originalSetTimeout = global.setTimeout;
+const originalClearTimeout = global.clearTimeout;
+let fakeNow = 0;
+Date.now = () => fakeNow;
+global.setTimeout = (callback, delay = 0) => {
+  fakeNow += Math.max(1, Number(delay) || 1);
+  callback();
+  return fakeNow;
+};
+global.clearTimeout = () => {};
+try {
+  componentInstance.initializeAnimationClips();
+  sampledProgress.length = 0;
+  assert.strictEqual(componentInstance.playExplode(), true);
+  assert(Math.abs(sampledProgress.at(-1) - 1) < 1e-9);
+  assert(sampledProgress.every((value, index) => index === 0 || value >= sampledProgress[index - 1]));
+  sampledProgress.length = 0;
+  assert.strictEqual(componentInstance.playInstall(), true);
+  assert(Math.abs(sampledProgress.at(-1)) < 1e-9);
+  assert(sampledProgress.every((value, index) => index === 0 || value <= sampledProgress[index - 1]));
+} finally {
+  Date.now = originalNow;
+  global.setTimeout = originalSetTimeout;
+  global.clearTimeout = originalClearTimeout;
+}
 const arViewerSource = fs.readFileSync(
   path.join(projectRoot, 'miniprogram', 'pages', 'ar-viewer', 'ar-viewer.js'),
   'utf8',

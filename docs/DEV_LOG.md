@@ -272,3 +272,11 @@
 - `prepare_solidworks_gltf.js` 现保留原名称到动画 `extras.sourceAnimationName`，同时将
   第一条动画的运行时名称固定为 `gltfAnimation`；页面显示仍使用“爆炸视图1”。
 - 重新生成无扩展 GLB，并校验 `gltfAnimation` 仍为 4 秒、58 条位移轨道。
+
+### 安装与拆卸方向修复
+
+- 部分微信真机运行时没有按 `Animator.play({ direction: 'backwards' })` 反向执行 glTF，
+  导致“安装”和“拆卸”看起来都在播放原始正向爆炸轨道。
+- 改为确定性的进度驱动：拆卸将轨道从当前进度插值到 1，安装将当前进度插值回 0；
+  每 32 ms 使用 `pauseToFrame()` 写入进度，不再依赖运行时倒放实现。
+- 动画时间按剩余距离计算，并加入 ease-in-out 缓动；“分层”同样平滑移动到 52%。

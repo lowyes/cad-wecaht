@@ -54,7 +54,7 @@ Component({
         if (!this.animator) throw new Error('未找到 Animator 组件');
 
         this.ready = true;
-        this.setAnimationProgress(0);
+        this.initializeAnimationClips();
         this.triggerEvent('model-ready', {
           clipName: config.displayClipName,
           durationMs: config.durationMs,
@@ -74,45 +74,74 @@ Component({
       this.triggerEvent('model-error', { message: '装配体 GLB 解析失败' });
     },
 
+    initializeAnimationClips() {
+      this.animator.stop();
+      for (const clipName of config.clipNames) {
+        this.animator.play(clipName, { loop: 0, direction: 'forwards' });
+        this.animator.pauseToFrame(clipName, 0);
+      }
+      this.animationProgress = 0;
+      this.animating = false;
+      return true;
+    },
+
+    applyAnimationProgress(progress) {
+      if (!this.animator) return false;
+      const normalizedProgress = Math.max(0, Math.min(1, progress));
+      for (const clipName of config.clipNames) {
+        this.animator.pauseToFrame(clipName, normalizedProgress);
+      }
+      this.animationProgress = normalizedProgress;
+      return true;
+    },
+
     setAnimationProgress(progress) {
       if (!this.animator) return false;
       this.animationToken = (this.animationToken || 0) + 1;
       clearTimeout(this.animationTimer);
+      this.animationTimer = null;
       this.animating = false;
-      this.animator.stop();
-      const normalizedProgress = Math.max(0, Math.min(1, progress));
-      for (const clipName of config.clipNames) {
-        this.animator.play(clipName, { loop: 0, direction: 'forwards' });
-        this.animator.pauseToFrame(clipName, normalizedProgress);
-      }
-      return true;
+      return this.applyAnimationProgress(progress);
     },
 
-    playAnimation(direction, mode) {
+    animateToProgress(targetProgress, mode) {
       if (!this.ready || !this.animator || this.animating) return false;
       this.animationToken = (this.animationToken || 0) + 1;
       const token = this.animationToken;
       clearTimeout(this.animationTimer);
-      this.animator.stop();
+      const fromProgress = Number(this.animationProgress) || 0;
+      const toProgress = Math.max(0, Math.min(1, targetProgress));
+      const distance = Math.abs(toProgress - fromProgress);
+      const durationMs = Math.max(240, Math.round(config.durationMs * distance));
+      const startedAt = Date.now();
       this.currentMode = mode;
       this.animating = true;
       this.triggerEvent('animation-start', { mode });
-      console.log('[solidworks-assembly] play animation', {
+      console.log('[solidworks-assembly] tween animation progress', {
         clips: config.clipNames,
-        direction,
+        fromProgress,
+        toProgress,
+        durationMs,
         mode,
       });
-      for (const clipName of config.clipNames) {
-        this.animator.play(clipName, {
-          loop: 0,
-          speed: 1,
-          direction,
-        });
-      }
-      this.animationTimer = setTimeout(
-        () => this.finishAnimation(token),
-        config.durationMs + 350,
-      );
+
+      const tick = () => {
+        if (this.disposed || token !== this.animationToken) return;
+        const elapsedRatio = Math.min(1, (Date.now() - startedAt) / durationMs);
+        const easedRatio =
+          elapsedRatio < 0.5
+            ? 2 * elapsedRatio * elapsedRatio
+            : 1 - Math.pow(-2 * elapsedRatio + 2, 2) / 2;
+        this.applyAnimationProgress(
+          fromProgress + (toProgress - fromProgress) * easedRatio,
+        );
+        if (elapsedRatio >= 1) {
+          this.finishAnimation(token);
+          return;
+        }
+        this.animationTimer = setTimeout(tick, 32);
+      };
+      this.animationTimer = setTimeout(tick, 0);
       return true;
     },
 
@@ -130,26 +159,16 @@ Component({
       this.triggerEvent('animation-end', { mode: this.currentMode });
     },
 
-    handleAnimationStop() {
-      this.finishAnimation();
-    },
-
     playInstall() {
-      return this.playAnimation('backwards', 'complete');
+      return this.animateToProgress(0, 'complete');
     },
 
     playExplode() {
-      return this.playAnimation('forwards', 'exploded');
+      return this.animateToProgress(1, 'exploded');
     },
 
     playSection() {
-      if (!this.ready || this.animating) return false;
-      this.triggerEvent('animation-start', { mode: 'section' });
-      this.setAnimationProgress(0.52);
-      setTimeout(() => {
-        if (!this.disposed) this.triggerEvent('animation-end', { mode: 'section' });
-      }, 80);
-      return true;
+      return this.animateToProgress(0.52, 'section');
     },
 
     showComplete() {
