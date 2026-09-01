@@ -291,3 +291,19 @@
   `drag-shape` 和 `untouch-shape`；按住拖动时只修改所选零件的局部 Transform。
 - 拖动零件期间暂时禁用相机 OrbitControl，松手后恢复；点击空白区域仍可旋转视角，
   双指仍可缩放。
+
+### 模型加载与零件交互解耦
+
+- 修复零件碰撞框初始化异常被统一误报为“模型加载失败”的问题：GLB 与动画解析完成后
+  立即进入可用状态，零件交互改为随后异步初始化。
+- 每个零件只为首个 Mesh 创建一个自动适配的 `CubeShape`，并且每处理 5 个零件让出
+  一帧，降低 58 个碰撞框集中创建导致的真机卡顿和超时风险。
+- 内部节点解析、碰撞框创建和事件绑定均按零件隔离错误；单个零件失败只会跳过该零件，
+  不再影响模型显示和安装、拆卸、分层、完整四种动画操作。
+- 新增 `interaction-ready` / `interaction-warning` 状态事件，页面可独立显示实际支持拖动
+  的零件数量；交互不可用时仍保留完整爆炸动画能力。
+- Verification commands run:
+  - `node tools/test_assembly_demo.js`
+  - `node tools/test_glb_animation_inspector.js`
+  - `node tools/verify_local_ar.js`
+  - `git diff --check`

@@ -10,6 +10,8 @@
     bind:assets-loaded="handleAssetsLoaded"
     bind:model-ready="handleModelReady"
     bind:model-error="handleModelError"
+    bind:interaction-ready="handleInteractionReady"
+    bind:interaction-warning="handleInteractionWarning"
     bind:animation-start="handleAnimationStart"
     bind:animation-end="handleAnimationEnd"
     bind:part-selected="handlePartSelected"

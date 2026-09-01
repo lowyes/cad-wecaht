@@ -111,7 +111,6 @@ Page({
     this.setData({
       loadingText: `已解析动画“${detail.clipName || config.clipName}”`,
       progress: 97,
-      interactivePartCount: Number(detail.interactivePartCount) || 0,
     });
   },
 
@@ -119,14 +118,37 @@ Page({
     clearTimeout(this.loadWatchdog);
     this.loadWatchdog = null;
     setTimeout(() => {
-      this.setData({
+      const nextData = {
         loading: false,
         ready: true,
         progress: 100,
         stateLabel: '完整视图',
-        stateHint: '点击“拆卸”播放 SolidWorks 原始爆炸动画',
-      });
+      };
+      if (!this.interactionInitialized) {
+        nextData.stateHint = '模型已就绪，正在准备零件点击与拖动…';
+      }
+      this.setData(nextData);
     }, 280);
+  },
+
+  handleInteractionReady({ detail = {} }) {
+    this.interactionInitialized = true;
+    const interactivePartCount = Number(detail.interactivePartCount) || 0;
+    this.setData({
+      interactivePartCount,
+      stateHint: interactivePartCount
+        ? `${interactivePartCount} 个零件可点击定位与独立拖动`
+        : '爆炸动画可用，当前模型没有可拖动零件',
+    });
+  },
+
+  handleInteractionWarning({ detail = {} }) {
+    this.interactionInitialized = true;
+    this.setData({
+      interactivePartCount: Number(detail.interactivePartCount) || 0,
+      stateHint: '爆炸动画可用，零件独立拖动暂不可用',
+    });
+    console.warn('[assembly-viewer] interaction warning:', detail.message);
   },
 
   handleModelError({ detail = {} }) {

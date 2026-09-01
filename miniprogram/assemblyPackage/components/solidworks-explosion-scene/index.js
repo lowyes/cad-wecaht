@@ -49,7 +49,7 @@ Component({
       this.triggerEvent('model-error', { message: '装配体 GLB 资源加载失败' });
     },
 
-    async handleGltfLoaded() {
+    handleGltfLoaded() {
       try {
         const xrFrameSystem = wx.getXrFrameSystem();
         const model = this.scene.getElementById('assembly-model');
@@ -59,17 +59,32 @@ Component({
         if (!this.gltfComponent) throw new Error('未找到 GLTF 组件');
 
         this.initializeAnimationClips();
-        const interactivePartCount = await this.prepareInteractiveParts(
-          xrFrameSystem,
-        );
         this.ready = true;
         this.triggerEvent('model-ready', {
           clipName: config.displayClipName,
           durationMs: config.durationMs,
           animatedNodeCount: config.animatedNodeCount,
-          interactivePartCount,
         });
         this.triggerEvent('assets-loaded');
+
+        // 碰撞框并非模型显示的必要条件。先让模型进入可用状态，再分批
+        // 初始化零件交互；单个节点失败时不能把正常 GLB 误报为加载失败。
+        setTimeout(() => {
+          if (this.disposed) return;
+          this.prepareInteractiveParts(xrFrameSystem)
+            .then((interactivePartCount) => {
+              if (this.disposed) return;
+              this.triggerEvent('interaction-ready', { interactivePartCount });
+            })
+            .catch((error) => {
+              console.warn('[solidworks-assembly] part interaction disabled:', error);
+              if (this.disposed) return;
+              this.triggerEvent('interaction-warning', {
+                message: `模型已加载，零件交互初始化失败：${error.message}`,
+                interactivePartCount: 0,
+              });
+            });
+        }, 0);
       } catch (error) {
         console.error('[solidworks-assembly] animation init failed:', error);
         this.triggerEvent('model-error', {
@@ -115,20 +130,25 @@ Component({
     async prepareInteractiveParts(xrFrameSystem) {
       this.partRecords = config.interactivePartNames
         .map((name) => {
-          const element = this.gltfComponent.getInternalNodeByName(name);
-          if (!element) return null;
-          const transform = element.getComponent(xrFrameSystem.Transform);
-          if (!transform) return null;
-          return {
-            name,
-            element,
-            transform,
-            basePosition: null,
-            explodedPosition: null,
-            isExploded: false,
-            dragged: false,
-            animationToken: 0,
-          };
+          try {
+            const element = this.gltfComponent.getInternalNodeByName(name);
+            if (!element) return null;
+            const transform = element.getComponent(xrFrameSystem.Transform);
+            if (!transform) return null;
+            return {
+              name,
+              element,
+              transform,
+              basePosition: null,
+              explodedPosition: null,
+              isExploded: false,
+              dragged: false,
+              animationToken: 0,
+            };
+          } catch (error) {
+            console.warn(`[solidworks-assembly] skip unresolved part: ${name}`, error);
+            return null;
+          }
         })
         .filter(Boolean);
 
@@ -149,35 +169,47 @@ Component({
         xrFrameSystem.CameraOrbitControl,
       );
       let shapeCount = 0;
-      for (const record of this.partRecords) {
-        record.element.dfs((element) => {
-          const mesh = element.getComponent(xrFrameSystem.Mesh);
-          if (!mesh) return;
-          let shape = element.getComponent(xrFrameSystem.CubeShape);
+      const interactiveRecords = [];
+      for (let index = 0; index < this.partRecords.length; index += 1) {
+        const record = this.partRecords[index];
+        try {
+          let hitElement = null;
+          record.element.dfs((element) => {
+            if (hitElement) return;
+            const mesh = element.getComponent(xrFrameSystem.Mesh);
+            if (mesh) hitElement = element;
+          });
+          if (!hitElement) continue;
+          let shape = hitElement.getComponent(xrFrameSystem.CubeShape);
           if (!shape) {
-            shape = element.addComponent(xrFrameSystem.CubeShape, {
+            shape = hitElement.addComponent(xrFrameSystem.CubeShape, {
               autoFit: true,
             });
           }
-          if (!shape) return;
-          shapeCount += 1;
-          element.event.add('touch-shape', (event) => {
+          if (!shape) continue;
+          hitElement.event.add('touch-shape', (event) => {
             this.handlePartTouch(record, event);
           });
-          element.event.add('drag-shape', (event) => {
+          hitElement.event.add('drag-shape', (event) => {
             this.handlePartDrag(record, event);
           });
-          element.event.add('untouch-shape', (event) => {
+          hitElement.event.add('untouch-shape', (event) => {
             this.handlePartUntouch(record, event);
           });
-        });
+          shapeCount += 1;
+          interactiveRecords.push(record);
+        } catch (error) {
+          console.warn(`[solidworks-assembly] skip collider: ${record.name}`, error);
+        }
+        if ((index + 1) % 5 === 0) await this.waitForPoseUpdate(16);
       }
+      this.partRecords = interactiveRecords;
       console.log('[solidworks-assembly] interactive parts ready', {
         configured: config.interactivePartNames.length,
         resolved: this.partRecords.length,
         shapes: shapeCount,
       });
-      return this.partRecords.length;
+      return shapeCount;
     },
 
     eventPayload(event) {

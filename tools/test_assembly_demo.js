@@ -162,8 +162,15 @@ assert.strictEqual(
 );
 assert(solidworksComponent.includes('getInternalNodeByName'));
 assert(solidworksComponent.includes('xrFrameSystem.CubeShape'));
-assert(solidworksComponent.includes("element.event.add('drag-shape'"));
+assert(solidworksComponent.includes("hitElement.event.add('drag-shape'"));
 assert(solidworksComponent.includes('record.explodedPosition'));
+assert(solidworksComponent.includes("this.triggerEvent('interaction-ready'"));
+assert(solidworksComponent.includes("this.triggerEvent('interaction-warning'"));
+assert(
+  solidworksComponent.indexOf("this.triggerEvent('assets-loaded')") <
+    solidworksComponent.indexOf('this.prepareInteractiveParts(xrFrameSystem)'),
+  '模型显示成功不应等待零件碰撞框初始化',
+);
 assert(!solidworksComponent.includes('ignoreError'));
 
 const appConfig = JSON.parse(
@@ -188,6 +195,21 @@ const solidworksViewerSource = fs.readFileSync(
 );
 assert(solidworksViewerSource.includes('startLoadWatchdog'));
 assert(solidworksViewerSource.includes('retryLoad'));
+assert(solidworksViewerSource.includes('handleInteractionReady'));
+assert(solidworksViewerSource.includes('handleInteractionWarning'));
+const solidworksViewerTemplate = fs.readFileSync(
+  path.join(
+    projectRoot,
+    'miniprogram',
+    'assemblyPackage',
+    'pages',
+    'assembly-viewer',
+    'index.wxml',
+  ),
+  'utf8',
+);
+assert(solidworksViewerTemplate.includes('bind:interaction-ready'));
+assert(solidworksViewerTemplate.includes('bind:interaction-warning'));
 
 let componentDefinition = null;
 const originalComponent = global.Component;
