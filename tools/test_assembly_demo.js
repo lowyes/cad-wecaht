@@ -118,7 +118,7 @@ const animationReport = inspectGlbAnimation(solidworksModel, {
 });
 assert.strictEqual(animationReport.valid, true, 'SolidWorks GLB 应通过兼容性检查');
 assert.strictEqual(animationReport.counts.animations, 1, '应保留一条爆炸动画');
-assert.strictEqual(animationReport.animations[0].name, '爆炸视图1');
+assert.strictEqual(animationReport.animations[0].name, 'gltfAnimation');
 assert.strictEqual(animationReport.animations[0].durationSec, 4);
 assert.strictEqual(animationReport.animations[0].tracks.translation, 58);
 assert.strictEqual(animationReport.animations[0].targetNodeCount, 58);
@@ -142,6 +142,18 @@ const solidworksComponent = fs.readFileSync(
 assert(solidworksComponent.includes("playAnimation('backwards'"));
 assert(solidworksComponent.includes("playAnimation('forwards'"));
 assert(solidworksComponent.includes('pauseToFrame'));
+assert(solidworksComponent.includes('config.clipNames'));
+const solidworksConfig = require(path.join(
+  projectRoot,
+  'miniprogram',
+  'assemblyPackage',
+  'config',
+  'assembly_0001.js',
+));
+assert.deepStrictEqual(solidworksConfig.clipNames, [
+  'gltfAnimation',
+  'gltfAnimation#0',
+]);
 assert(!solidworksComponent.includes('ignoreError'));
 
 const appConfig = JSON.parse(

@@ -56,7 +56,7 @@ Component({
         this.ready = true;
         this.setAnimationProgress(0);
         this.triggerEvent('model-ready', {
-          clipName: config.clipName,
+          clipName: config.displayClipName,
           durationMs: config.durationMs,
           animatedNodeCount: config.animatedNodeCount,
         });
@@ -80,8 +80,11 @@ Component({
       clearTimeout(this.animationTimer);
       this.animating = false;
       this.animator.stop();
-      this.animator.play(config.clipName, { loop: 0, direction: 'forwards' });
-      this.animator.pauseToFrame(config.clipName, Math.max(0, Math.min(1, progress)));
+      const normalizedProgress = Math.max(0, Math.min(1, progress));
+      for (const clipName of config.clipNames) {
+        this.animator.play(clipName, { loop: 0, direction: 'forwards' });
+        this.animator.pauseToFrame(clipName, normalizedProgress);
+      }
       return true;
     },
 
@@ -94,11 +97,18 @@ Component({
       this.currentMode = mode;
       this.animating = true;
       this.triggerEvent('animation-start', { mode });
-      this.animator.play(config.clipName, {
-        loop: 0,
-        speed: 1,
+      console.log('[solidworks-assembly] play animation', {
+        clips: config.clipNames,
         direction,
+        mode,
       });
+      for (const clipName of config.clipNames) {
+        this.animator.play(clipName, {
+          loop: 0,
+          speed: 1,
+          direction,
+        });
+      }
       this.animationTimer = setTimeout(
         () => this.finishAnimation(token),
         config.durationMs + 350,

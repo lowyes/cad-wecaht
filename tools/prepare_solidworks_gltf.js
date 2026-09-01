@@ -117,6 +117,18 @@ function pruneUnusedTextureResources(document) {
   };
 }
 
+function normalizeAnimationNames(document) {
+  return (document.animations || []).map((animation, index) => {
+    const originalName = animation.name || `animation-${index}`;
+    animation.extras = {
+      ...(animation.extras || {}),
+      sourceAnimationName: originalName,
+    };
+    animation.name = index === 0 ? 'gltfAnimation' : `gltfAnimation#${index}`;
+    return { originalName, runtimeName: animation.name };
+  });
+}
+
 function main() {
   const inputPath = process.argv[2] && path.resolve(process.argv[2]);
   const outputPath = process.argv[3] && path.resolve(process.argv[3]);
@@ -133,13 +145,14 @@ function main() {
   const removedDdsNormals = removeUnsupportedDdsNormals(document);
   removeSolidworksViewerMetadata(document);
   const retainedTextures = pruneUnusedTextureResources(document);
+  const animations = normalizeAnimationNames(document);
   document.asset = {
     ...(document.asset || {}),
     generator: `${(document.asset && document.asset.generator) || 'SOLIDWORKSGLTF'} + CAD Vision XR prep`,
   };
   fs.writeFileSync(outputPath, `${JSON.stringify(document, null, 2)}\n`);
   console.log(
-    `Prepared ${path.basename(outputPath)}: removed ${removedDdsNormals} unsupported DDS normal-map bindings; retained ${retainedTextures.textures} textures / ${retainedTextures.images} images.`,
+    `Prepared ${path.basename(outputPath)}: removed ${removedDdsNormals} unsupported DDS normal-map bindings; retained ${retainedTextures.textures} textures / ${retainedTextures.images} images; animations ${animations.map((item) => `${item.originalName} -> ${item.runtimeName}`).join(', ') || 'none'}.`,
   );
 }
 

@@ -263,3 +263,12 @@
   2 MB。
 - 移除会吞掉解析错误的 `ignoreError` 选项；增加 18 秒加载看门狗和“重新加载装配体”
   按钮，后续即使资源异常也不会永久停在加载动画。
+
+### 爆炸按钮无动作修复
+
+- SolidWorks 源动画名称为中文 `爆炸视图1`，但 XR-FRAME 官方 glTF 动画控制示例使用
+  运行时片段键 `gltfAnimation`；片段键不匹配时 `Animator.play()` 不抛出可见错误，
+  页面按钮会进入播放状态但模型保持不动。
+- `prepare_solidworks_gltf.js` 现保留原名称到动画 `extras.sourceAnimationName`，同时将
+  第一条动画的运行时名称固定为 `gltfAnimation`；页面显示仍使用“爆炸视图1”。
+- 重新生成无扩展 GLB，并校验 `gltfAnimation` 仍为 4 秒、58 条位移轨道。
