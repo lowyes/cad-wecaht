@@ -331,3 +331,11 @@
 - 改用 XR-FRAME `GLTF.getPrimitivesByNodeName()` 官方接口，按 glTF Node 名称取得
   实例化后的 Primitive，并在 Primitive 所属 Element 上创建 `CubeShape` 与拖动事件。
 - 保留根元素 Mesh 检查和递归搜索作为旧基础库兼容回退。
+
+### 真机零件拖动事件兜底
+
+- XR-FRAME 碰撞框仍负责确定被选中的具体零件；选中后同时监听场景原始
+  `touchmove` / `touchend`，避免部分真机只有 `touch-shape`、没有持续派发
+  `drag-shape` 时出现“能点中但拖不动”。
+- 原始手势接管期间忽略合成 `drag-shape`，防止同一位移被重复应用；松手、切换全局
+  动画和页面销毁时都会移除临时监听。

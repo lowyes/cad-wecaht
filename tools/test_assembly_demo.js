@@ -166,6 +166,9 @@ assert(solidworksComponent.includes('xrFrameSystem.CubeShape'));
 assert(solidworksComponent.includes("hitElement.event.add('drag-shape'"));
 assert(solidworksComponent.includes('record.explodedPosition'));
 assert(solidworksComponent.includes('setPartPosition(name, mode)'));
+assert(solidworksComponent.includes('startRawPartDrag(record, event)'));
+assert(solidworksComponent.includes("this.scene.event.add('touchmove'"));
+assert(solidworksComponent.includes('applyPartDragDelta(record, deltaX, deltaY)'));
 assert(solidworksComponent.includes("this.triggerEvent('interaction-ready'"));
 assert(solidworksComponent.includes("this.triggerEvent('interaction-warning'"));
 assert(
@@ -318,6 +321,31 @@ try {
   assert(partRecord.transform.position.y > 0);
   componentInstance.handlePartUntouch(partRecord);
   assert.strictEqual(orbitState.disabled, false);
+
+  const sceneHandlers = new Map();
+  componentInstance.scene = {
+    event: {
+      add(name, handler) { sceneHandlers.set(name, handler); },
+      addOnce(name, handler) { sceneHandlers.set(name, handler); },
+      remove(name, handler) {
+        if (sceneHandlers.get(name) === handler) sceneHandlers.delete(name);
+      },
+    },
+  };
+  partRecord.transform.position.x = 0;
+  partRecord.transform.position.y = 0;
+  partRecord.dragged = false;
+  componentInstance.handlePartTouch(partRecord, { x: 10, y: 20 });
+  assert.strictEqual(componentInstance.rawPartDragActive, true);
+  assert.strictEqual(typeof sceneHandlers.get('touchmove'), 'function');
+  sceneHandlers.get('touchmove')({
+    touches: [{ pageX: 25, pageY: 12 }],
+  });
+  assert(partRecord.transform.position.x > 0, '原始 touchmove 应横向移动零件');
+  assert(partRecord.transform.position.y > 0, '原始 touchmove 应纵向移动零件');
+  sceneHandlers.get('touchend')({ changedTouches: [{ pageX: 25, pageY: 12 }] });
+  assert.strictEqual(componentInstance.rawPartDragActive, false);
+  assert.strictEqual(sceneHandlers.has('touchmove'), false);
 } finally {
   Date.now = originalNow;
   global.setTimeout = originalSetTimeout;

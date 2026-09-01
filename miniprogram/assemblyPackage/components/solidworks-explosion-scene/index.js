@@ -18,6 +18,7 @@ Component({
       this.animationToken = (this.animationToken || 0) + 1;
       clearTimeout(this.animationTimer);
       this.cancelAllPartAnimations();
+      this.stopRawPartDrag();
       this.animationTimer = null;
       this.animator = null;
       this.gltfComponent = null;
@@ -294,7 +295,7 @@ Component({
               continue;
             }
             if (!record.eventsBound) {
-              hitElement.event.add('touch-shape', () => this.handlePartTouch(record));
+              hitElement.event.add('touch-shape', (event) => this.handlePartTouch(record, event));
               hitElement.event.add('drag-shape', (event) => this.handlePartDrag(record, event));
               hitElement.event.add('untouch-shape', () => this.handlePartUntouch(record));
               record.eventsBound = true;
@@ -372,11 +373,64 @@ Component({
       return worldPerPixel / scale;
     },
 
-    handlePartTouch(record) {
+    touchPointFromEvent(event) {
+      const payload = this.eventPayload(event);
+      const touch =
+        (payload.changedTouches && payload.changedTouches[0]) ||
+        (payload.touches && payload.touches[0]);
+      if (touch) {
+        return {
+          x: Number(touch.x != null ? touch.x : touch.pageX) || 0,
+          y: Number(touch.y != null ? touch.y : touch.pageY) || 0,
+        };
+      }
+      return {
+        x: Number(payload.x) || 0,
+        y: Number(payload.y) || 0,
+      };
+    },
+
+    startRawPartDrag(record, event) {
+      this.stopRawPartDrag();
+      if (!this.scene || !this.scene.event) return false;
+      const point = this.touchPointFromEvent(event);
+      this.rawPartDragActive = true;
+      this.rawPartDragPoint = point;
+      this.rawPartMoveHandler = (moveEvent) => {
+        if (!this.rawPartDragActive || this.activePart !== record) return;
+        const nextPoint = this.touchPointFromEvent(moveEvent);
+        const deltaX = nextPoint.x - this.rawPartDragPoint.x;
+        const deltaY = nextPoint.y - this.rawPartDragPoint.y;
+        this.rawPartDragPoint = nextPoint;
+        this.applyPartDragDelta(record, deltaX, deltaY);
+      };
+      this.rawPartEndHandler = () => this.handlePartUntouch(record);
+      this.scene.event.add('touchmove', this.rawPartMoveHandler);
+      this.scene.event.addOnce('touchend', this.rawPartEndHandler);
+      return true;
+    },
+
+    stopRawPartDrag() {
+      if (this.scene && this.scene.event) {
+        if (this.rawPartMoveHandler) {
+          this.scene.event.remove('touchmove', this.rawPartMoveHandler);
+        }
+        if (this.rawPartEndHandler) {
+          this.scene.event.remove('touchend', this.rawPartEndHandler);
+        }
+      }
+      this.rawPartDragActive = false;
+      this.rawPartDragPoint = null;
+      this.rawPartMoveHandler = null;
+      this.rawPartEndHandler = null;
+    },
+
+    handlePartTouch(record, event) {
       if (!this.ready || this.animating) return;
       this.activePart = record;
       record.dragged = false;
       this.setCameraOrbitLocked(true);
+      this.startRawPartDrag(record, event);
       this.triggerEvent('part-selected', {
         name: record.name,
         action: 'selected',
@@ -385,9 +439,15 @@ Component({
 
     handlePartDrag(record, event) {
       if (!this.ready || this.animating || this.activePart !== record) return;
+      // 原始 touchmove 已接管时忽略合成 drag-shape，避免同一位移应用两次。
+      if (this.rawPartDragActive) return;
       const payload = this.eventPayload(event);
       const deltaX = Number(payload.deltaX) || 0;
       const deltaY = Number(payload.deltaY) || 0;
+      this.applyPartDragDelta(record, deltaX, deltaY);
+    },
+
+    applyPartDragDelta(record, deltaX, deltaY) {
       if (!deltaX && !deltaY) return;
       const wasDragged = record.dragged;
       record.animationToken += 1;
@@ -412,6 +472,7 @@ Component({
     },
 
     handlePartUntouch(record) {
+      this.stopRawPartDrag();
       this.setCameraOrbitLocked(false);
       if (this.activePart !== record) return;
       this.activePart = null;
