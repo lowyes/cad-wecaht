@@ -47,10 +47,12 @@ const AR_TARGETS = [
   },
   {
     modelId: "assembly_demo_0001",
-    label: "减速器装配体（演示目标图）",
+    label: "减速器装配体",
     targetType: "assembly",
     assemblyId: "assembly_demo_0001",
-    markerSrc: "/assets/markers/assembly_demo_0001_target.png",
+    markerSrc: "/assets/markers/assembly_0001_solidworks_target_candidate.png",
+    originalMarkerSrc: "/assets/markers/assembly_demo_0001_target.png",
+    markerVariant: "solidworks-geometry-v1",
     hasModel: false,
   },
 ];

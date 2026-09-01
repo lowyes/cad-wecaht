@@ -239,9 +239,13 @@
   小程序主包；AR 识别装配图后的按钮现跳转到该真实爆炸视图页面。
 - 真实模型只有一条爆炸动画，没有独立剖切轨道，因此第三个按钮明确显示为“分层”，
   通过停在动画 52% 位置观察内部结构，不冒充真实剖面。
-- 当前装配体模型已替换为真实 SolidWorks 数据，但装配识别仍暂用项目生成的
-  `assembly_demo_0001_target.png`。取得实际装配工程图后，应将其作为同一目标的新
-  Marker 重新真机测试。
+- 新增 `tools/generate_solidworks_assembly_target.py`，直接读取优化后的真实 GLB，
+  确定性生成正视、俯视、右视、等轴测和主要零部件表，不使用 AI 猜测结构，也不
+  虚构制造尺寸。输出为 2200×1600 PNG，无四角定位码。
+- 新生成的 `assembly_0001_solidworks_target_candidate.png` 已作为装配识别候选图启用；
+  原 `assembly_demo_0001_target.png` 通过 `originalMarkerSrc` 保留，可随时回退。
+- 候选图虽然依据真实 GLB 几何生成，但仍不等同于 SolidWorks 出图模板中的正式制造
+  图纸；上线前必须打印或全屏显示同一张 PNG 完成微信真机识别测试。
 - Verification commands run:
   - `node tools/test_assembly_demo.js`
   - `node tools/test_glb_animation_inspector.js`
