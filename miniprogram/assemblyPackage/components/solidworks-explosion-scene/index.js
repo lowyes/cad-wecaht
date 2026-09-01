@@ -21,6 +21,8 @@ Component({
       this.animationTimer = null;
       this.animator = null;
       this.gltfComponent = null;
+      this.cameraOrbit = null;
+      this.cameraTransform = null;
       this.partRecords = [];
       this.scene = null;
     },
@@ -67,8 +69,10 @@ Component({
         });
         this.triggerEvent('assets-loaded');
 
-        // 碰撞框并非模型显示的必要条件。先让模型进入可用状态，再分批
+        // 碰撞盒并非模型显示的必要条件。先让模型进入可用状态，再分批
         // 初始化零件交互；单个节点失败时不能把正常 GLB 误报为加载失败。
+        if (this.interactionPrepared) return;
+        this.interactionPrepared = true;
         setTimeout(() => {
           if (this.disposed) return;
           this.prepareInteractiveParts(xrFrameSystem)
@@ -77,6 +81,7 @@ Component({
               this.triggerEvent('interaction-ready', {
                 interactivePartCount,
                 interactivePartNames: this.partRecords.map((record) => record.name),
+                reason: this.interactionFailureReason || '',
               });
             })
             .catch((error) => {
@@ -130,30 +135,101 @@ Component({
       transform.position.z = position[2];
     },
 
-    async prepareInteractiveParts(xrFrameSystem) {
-      this.partRecords = config.interactivePartNames
-        .map((name) => {
-          try {
-            const element = this.gltfComponent.getInternalNodeByName(name);
-            if (!element) return null;
-            const transform = element.getComponent(xrFrameSystem.Transform);
-            if (!transform) return null;
-            return {
-              name,
-              element,
-              transform,
-              basePosition: null,
-              explodedPosition: null,
-              isExploded: false,
-              dragged: false,
-              animationToken: 0,
-            };
-          } catch (error) {
-            console.warn(`[solidworks-assembly] skip unresolved part: ${name}`, error);
-            return null;
+    getElementChildren(element) {
+      if (typeof element.getChildrenByFilter === 'function') {
+        return element.getChildrenByFilter(() => true);
+      }
+      return Array.isArray(element._children) ? element._children : [];
+    },
+
+    getComponentMesh(target, meshClass) {
+      if (meshClass && target.getComponent(meshClass)) return target.getComponent(meshClass);
+      if (typeof target.getComponent === 'function') {
+        return target.getComponent('mesh');
+      }
+      return null;
+    },
+
+    findFirstMeshElement(element, meshClass) {
+      let found = null;
+      // glTF Node 可能自身就是 Mesh 节点，必须先检查根元素。
+      if (this.getComponentMesh(element, meshClass)) return element;
+      if (typeof element.dfs === 'function') {
+        element.dfs((target) => {
+          if (!found && this.getComponentMesh(target, meshClass)) found = target;
+        });
+        return found;
+      }
+      // 兼容缺少 dfs 的旧运行时：手动遍历子元素查找 Mesh
+      if (this.getComponentMesh(element, meshClass)) return element;
+      const stack = this.getElementChildren(element);
+      while (stack.length && !found) {
+        const target = stack.pop();
+        if (this.getComponentMesh(target, meshClass)) {
+          found = target;
+        } else {
+          for (const child of this.getElementChildren(target)) stack.push(child);
+        }
+      }
+      return found;
+    },
+
+    async resolvePartRecords(xrFrameSystem) {
+      const maxAttempts = 5;
+      let lastFailures = [];
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        if (this.disposed || !this.gltfComponent) return [];
+        const failures = [];
+        const records = config.interactivePartNames
+          .map((name) => {
+            try {
+              const element = this.gltfComponent.getInternalNodeByName(name);
+              if (!element) {
+                failures.push(`${name}:not-found`);
+                return null;
+              }
+              const transform = element.getComponent(xrFrameSystem.Transform);
+              if (!transform) {
+                failures.push(`${name}:no-transform`);
+                return null;
+              }
+              return {
+                name,
+                element,
+                transform,
+                basePosition: null,
+                explodedPosition: null,
+                isExploded: false,
+                dragged: false,
+                eventsBound: false,
+                animationToken: 0,
+              };
+            } catch (error) {
+              failures.push(`${name}:${(error && error.message) || 'error'}`);
+              return null;
+            }
+          })
+          .filter(Boolean);
+        if (records.length) {
+          if (attempt > 1) {
+            console.log(`[solidworks-assembly] part nodes resolved on attempt ${attempt}`);
           }
-        })
-        .filter(Boolean);
+          return records;
+        }
+        lastFailures = failures;
+        console.warn(
+          `[solidworks-assembly] part nodes unresolved (attempt ${attempt}/${maxAttempts})`,
+          failures.slice(0, 5),
+        );
+        if (attempt < maxAttempts) await this.waitForPoseUpdate(400);
+      }
+      this.interactionFailureReason = `零件节点解析失败：${lastFailures[0] || 'unknown'}`;
+      return [];
+    },
+
+    async prepareInteractiveParts(xrFrameSystem) {
+      this.partRecords = await this.resolvePartRecords(xrFrameSystem);
+      if (this.disposed) return 0;
 
       await this.waitForPoseUpdate();
       for (const record of this.partRecords) {
@@ -167,52 +243,82 @@ Component({
       this.applyAnimationProgress(0);
       await this.waitForPoseUpdate();
 
-      const camera = this.scene.getElementById('camera');
-      this.cameraOrbit = camera && camera.getComponent(
-        xrFrameSystem.CameraOrbitControl,
-      );
-      let shapeCount = 0;
+      const camera = this.scene ? this.scene.getElementById('camera') : null;
+      this.cameraOrbit = camera
+        ? camera.getComponent(xrFrameSystem.CameraOrbitControl)
+        : null;
+      this.cameraTransform = camera
+        ? camera.getComponent(xrFrameSystem.Transform)
+        : null;
+      const cameraComponent = camera
+        ? camera.getComponent(xrFrameSystem.Camera)
+        : null;
+      this.cameraFov = Number(cameraComponent && cameraComponent.fov) || 60;
+
+      const meshClass = xrFrameSystem.Mesh;
+      const shapeClass = xrFrameSystem.CubeShape;
+      const failures = [];
+      const noteFailure = (stage, name, reason) => {
+        failures.push({ stage, name, reason });
+      };
+      if (typeof shapeClass !== 'function') {
+        noteFailure('shape-class', '-', 'xrFrameSystem.CubeShape 不可用');
+      }
+
       const interactiveRecords = [];
-      for (let index = 0; index < this.partRecords.length; index += 1) {
-        const record = this.partRecords[index];
-        try {
-          let hitElement = null;
-          record.element.dfs((element) => {
-            if (hitElement) return;
-            const mesh = element.getComponent(xrFrameSystem.Mesh);
-            if (mesh) hitElement = element;
-          });
-          if (!hitElement) continue;
-          let shape = hitElement.getComponent(xrFrameSystem.CubeShape);
-          if (!shape) {
-            shape = hitElement.addComponent(xrFrameSystem.CubeShape, {
-              autoFit: true,
-            });
+      if (typeof shapeClass === 'function') {
+        for (let index = 0; index < this.partRecords.length; index += 1) {
+          const record = this.partRecords[index];
+          try {
+            const primitives =
+              typeof this.gltfComponent.getPrimitivesByNodeName === 'function'
+                ? this.gltfComponent.getPrimitivesByNodeName(record.name)
+                : [];
+            const hitElement =
+              (primitives && primitives[0] && primitives[0].el) ||
+              this.findFirstMeshElement(record.element, meshClass);
+            if (!hitElement) {
+              noteFailure('mesh', record.name, '零件子树中未找到 Mesh 元素');
+              continue;
+            }
+            if (!hitElement.event || typeof hitElement.event.add !== 'function') {
+              noteFailure('event', record.name, '元素事件中心不可用');
+              continue;
+            }
+            let shape = hitElement.getComponent(shapeClass);
+            if (!shape) {
+              shape = hitElement.addComponent(shapeClass, { autoFit: true });
+            }
+            if (!shape) {
+              noteFailure('shape', record.name, 'addComponent 未返回组件');
+              continue;
+            }
+            if (!record.eventsBound) {
+              hitElement.event.add('touch-shape', () => this.handlePartTouch(record));
+              hitElement.event.add('drag-shape', (event) => this.handlePartDrag(record, event));
+              hitElement.event.add('untouch-shape', () => this.handlePartUntouch(record));
+              record.eventsBound = true;
+            }
+            interactiveRecords.push(record);
+          } catch (error) {
+            noteFailure('collider', record.name, (error && error.message) || String(error));
           }
-          if (!shape) continue;
-          hitElement.event.add('touch-shape', (event) => {
-            this.handlePartTouch(record, event);
-          });
-          hitElement.event.add('drag-shape', (event) => {
-            this.handlePartDrag(record, event);
-          });
-          hitElement.event.add('untouch-shape', (event) => {
-            this.handlePartUntouch(record, event);
-          });
-          shapeCount += 1;
-          interactiveRecords.push(record);
-        } catch (error) {
-          console.warn(`[solidworks-assembly] skip collider: ${record.name}`, error);
+          if ((index + 1) % 5 === 0) await this.waitForPoseUpdate(16);
+          if (this.disposed) return 0;
         }
-        if ((index + 1) % 5 === 0) await this.waitForPoseUpdate(16);
       }
       this.partRecords = interactiveRecords;
+      if (failures.length) {
+        this.interactionFailureReason = `${failures.length} 个零件初始化失败：${failures[0].stage}(${failures[0].reason})`;
+      } else if (!interactiveRecords.length && !this.interactionFailureReason) {
+        this.interactionFailureReason = '配置中的零件节点均未在模型中解析到';
+      }
       console.log('[solidworks-assembly] interactive parts ready', {
         configured: config.interactivePartNames.length,
-        resolved: this.partRecords.length,
-        shapes: shapeCount,
+        resolved: interactiveRecords.length,
+        failures,
       });
-      return shapeCount;
+      return interactiveRecords.length;
     },
 
     eventPayload(event) {
@@ -220,11 +326,57 @@ Component({
       return event.detail ? event.detail.value || event.detail : event.value || event;
     },
 
+    setCameraOrbitLocked(locked) {
+      const orbit = this.cameraOrbit;
+      if (!orbit) return;
+      // 规避运行时缺陷：CameraOrbitControl.disable() 只摘除 touchstart/wheel，
+      // 进行中手势的 touchmove/touchend 仍会驱动相机旋转，需手动清理，
+      // 并配合 isLock* 开关确保拖动零件时相机完全静止。
+      if (orbit._mouseInfo) orbit._mouseInfo.isDown = false;
+      if (this.scene && this.scene.event) {
+        if (orbit._handleTouchMove) {
+          this.scene.event.remove('touchmove', orbit._handleTouchMove);
+        }
+        if (orbit._handleTouchEnd) {
+          this.scene.event.remove('touchend', orbit._handleTouchEnd);
+        }
+      }
+      orbit.isLockRotate = locked;
+      orbit.isLockMove = locked;
+      orbit.isLockZoom = locked;
+      if (locked) {
+        if (typeof orbit.disable === 'function') orbit.disable();
+      } else if (typeof orbit.enable === 'function') {
+        orbit.enable();
+      }
+    },
+
+    getDragScale(record) {
+      const fallbackStep = 0.00075;
+      const cameraTransform = this.cameraTransform;
+      const scene = this.scene;
+      if (!cameraTransform || !scene) return fallbackStep;
+      const partWorld = record.transform.worldPosition;
+      const cameraWorld = cameraTransform.worldPosition;
+      const dx = partWorld.x - cameraWorld.x;
+      const dy = partWorld.y - cameraWorld.y;
+      const dz = partWorld.z - cameraWorld.z;
+      const distance = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+      const fovRad = ((Number(this.cameraFov) || 60) * Math.PI) / 180;
+      const sceneHeight = Math.max(1, Number(scene.height) || 667);
+      const worldPerPixel = (2 * distance * Math.tan(fovRad / 2)) / sceneHeight;
+      const worldScale = record.transform.worldScale;
+      const scale =
+        (Math.abs(worldScale.x) + Math.abs(worldScale.y) + Math.abs(worldScale.z)) / 3;
+      if (!Number.isFinite(scale) || scale < 1e-6) return fallbackStep;
+      return worldPerPixel / scale;
+    },
+
     handlePartTouch(record) {
       if (!this.ready || this.animating) return;
       this.activePart = record;
       record.dragged = false;
-      if (this.cameraOrbit) this.cameraOrbit.disable();
+      this.setCameraOrbitLocked(true);
       this.triggerEvent('part-selected', {
         name: record.name,
         action: 'selected',
@@ -237,19 +389,30 @@ Component({
       const deltaX = Number(payload.deltaX) || 0;
       const deltaY = Number(payload.deltaY) || 0;
       if (!deltaX && !deltaY) return;
+      const wasDragged = record.dragged;
       record.animationToken += 1;
       record.dragged = true;
-      const dragScale = 0.00042;
-      record.transform.position.x += deltaX * dragScale;
-      record.transform.position.y -= deltaY * dragScale;
-      this.triggerEvent('part-selected', {
-        name: record.name,
-        action: 'dragging',
-      });
+      const step = this.getDragScale(record);
+      const right = this.cameraTransform
+        ? this.cameraTransform.worldRight
+        : { x: 1, y: 0, z: 0 };
+      const up = this.cameraTransform
+        ? this.cameraTransform.worldUp
+        : { x: 0, y: 1, z: 0 };
+      const position = record.transform.position;
+      position.x += (right.x * deltaX - up.x * deltaY) * step;
+      position.y += (right.y * deltaX - up.y * deltaY) * step;
+      position.z += (right.z * deltaX - up.z * deltaY) * step;
+      if (!wasDragged) {
+        this.triggerEvent('part-selected', {
+          name: record.name,
+          action: 'dragging',
+        });
+      }
     },
 
     handlePartUntouch(record) {
-      if (this.cameraOrbit) this.cameraOrbit.enable();
+      this.setCameraOrbitLocked(false);
       if (this.activePart !== record) return;
       this.activePart = null;
       if (record.dragged || this.animating) {
@@ -326,7 +489,7 @@ Component({
         clearTimeout(record.animationTimer);
         record.animationTimer = null;
       }
-      if (this.cameraOrbit) this.cameraOrbit.enable();
+      this.setCameraOrbitLocked(false);
       this.activePart = null;
     },
 

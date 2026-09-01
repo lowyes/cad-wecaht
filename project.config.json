@@ -45,7 +45,7 @@
   },
   "appid": "wxa3f32e6e72330dba",
   "projectname": "cad-local-ar",
-  "libVersion": "2.20.1",
+  "libVersion": "3.16.1",
   "condition": {},
   "compileType": "miniprogram",
   "srcMiniprogramRoot": "miniprogram/",

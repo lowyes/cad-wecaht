@@ -161,6 +161,7 @@ assert.strictEqual(
   solidworksConfig.interactivePartNames.length,
 );
 assert(solidworksComponent.includes('getInternalNodeByName'));
+assert(solidworksComponent.includes('getPrimitivesByNodeName'));
 assert(solidworksComponent.includes('xrFrameSystem.CubeShape'));
 assert(solidworksComponent.includes("hitElement.event.add('drag-shape'"));
 assert(solidworksComponent.includes('record.explodedPosition'));
@@ -199,6 +200,7 @@ assert(solidworksViewerSource.includes('retryLoad'));
 assert(solidworksViewerSource.includes('handleInteractionReady'));
 assert(solidworksViewerSource.includes('handleInteractionWarning'));
 assert(solidworksViewerSource.includes('handleSelectedPartAction'));
+assert(solidworksViewerSource.includes('detail.reason'));
 const solidworksViewerTemplate = fs.readFileSync(
   path.join(
     projectRoot,

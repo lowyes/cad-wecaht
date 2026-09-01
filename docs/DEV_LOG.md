@@ -323,3 +323,11 @@
   - `node tools/test_glb_animation_inspector.js`
   - `node tools/verify_local_ar.js`
   - `git diff --check`
+
+### SolidWorks 零件碰撞框节点修复
+
+- 离线检查确认真实 GLB 的 58 个动画目标节点全部在节点自身引用 Mesh，且没有 Mesh
+  子节点；此前只遍历后代会漏掉全部零件节点。
+- 改用 XR-FRAME `GLTF.getPrimitivesByNodeName()` 官方接口，按 glTF Node 名称取得
+  实例化后的 Primitive，并在 Primitive 所属 Element 上创建 `CubeShape` 与拖动事件。
+- 保留根元素 Mesh 检查和递归搜索作为旧基础库兼容回退。

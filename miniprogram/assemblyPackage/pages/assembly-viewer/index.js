@@ -148,7 +148,7 @@ Page({
       selectedPartName: partOptions[0] || '',
       stateHint: interactivePartCount
         ? `${interactivePartCount} 个零件可点击定位与独立拖动`
-        : '爆炸动画可用，当前模型没有可拖动零件',
+        : detail.reason || '爆炸动画可用，当前模型没有可拖动零件',
     });
   },
 
