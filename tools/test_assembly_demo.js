@@ -282,6 +282,29 @@ assert(primitiveBinding, '缺少内部节点 API 时应从 Primitive 回退解�
 assert.strictEqual(primitiveBinding.element, primitiveElement);
 assert.strictEqual(primitiveBinding.hitElement, primitiveElement);
 assert.strictEqual(primitiveBinding.transform, primitiveTransform);
+
+const normalizedEntry = {
+  el: primitiveElement,
+  hasMesh: true,
+  meshes: [{ el: primitiveElement }],
+};
+componentInstance.gltfComponent = {
+  _nodeMap: new Map([['29 挡油环-2', normalizedEntry]]),
+  getInternalNodeByName(name) {
+    const entry = this._nodeMap.get(name);
+    return entry && entry.el;
+  },
+  getPrimitivesByNodeName(name) {
+    const entry = this._nodeMap.get(name);
+    return entry ? entry.meshes : [];
+  },
+};
+const normalizedBinding = componentInstance.resolvePartBinding('29  挡油环-2', {
+  Transform: 'Transform',
+});
+assert(normalizedBinding, '运行时折叠节点空格后仍应解析成功');
+assert.strictEqual(normalizedBinding.transform, primitiveTransform);
+assert(componentInstance.runtimeNodeDiagnostic().includes('runtime-map=1'));
 const originalNow = Date.now;
 const originalSetTimeout = global.setTimeout;
 const originalClearTimeout = global.clearTimeout;

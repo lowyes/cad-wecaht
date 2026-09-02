@@ -175,6 +175,36 @@ Component({
       return found;
     },
 
+    normalizeRuntimeNodeName(name) {
+      const value = String(name || '');
+      const normalized = typeof value.normalize === 'function' ? value.normalize('NFKC') : value;
+      return normalized.replace(/\s+/g, '').toLowerCase();
+    },
+
+    getRuntimeNodeMap() {
+      const nodeMap = this.gltfComponent && this.gltfComponent._nodeMap;
+      return nodeMap && typeof nodeMap.get === 'function' && typeof nodeMap.forEach === 'function'
+        ? nodeMap
+        : null;
+    },
+
+    findRuntimeNodeName(name) {
+      const nodeMap = this.getRuntimeNodeMap();
+      if (!nodeMap) return name;
+      if (nodeMap.get(name)) return name;
+      const expected = this.normalizeRuntimeNodeName(name);
+      let matchedName = null;
+      nodeMap.forEach((entry, runtimeName) => {
+        if (
+          matchedName === null &&
+          this.normalizeRuntimeNodeName(runtimeName) === expected
+        ) {
+          matchedName = runtimeName;
+        }
+      });
+      return matchedName || name;
+    },
+
     getPartPrimitives(name) {
       if (
         !this.gltfComponent ||
@@ -183,7 +213,8 @@ Component({
         return [];
       }
       try {
-        const primitives = this.gltfComponent.getPrimitivesByNodeName(name);
+        const runtimeName = this.findRuntimeNodeName(name);
+        const primitives = this.gltfComponent.getPrimitivesByNodeName(runtimeName);
         return Array.isArray(primitives) ? primitives : [];
       } catch (error) {
         console.warn(`[solidworks-assembly] primitive lookup failed: ${name}`, error);
@@ -192,21 +223,34 @@ Component({
     },
 
     resolvePartBinding(name, xrFrameSystem) {
+      const runtimeName = this.findRuntimeNodeName(name);
+      const nodeMap = this.getRuntimeNodeMap();
+      const runtimeEntry = nodeMap ? nodeMap.get(runtimeName) : null;
       let internalElement = null;
       if (typeof this.gltfComponent.getInternalNodeByName === 'function') {
         try {
-          internalElement = this.gltfComponent.getInternalNodeByName(name);
+          internalElement = this.gltfComponent.getInternalNodeByName(runtimeName);
         } catch (error) {
           console.warn(`[solidworks-assembly] internal node lookup failed: ${name}`, error);
         }
       }
 
+      if (!internalElement && runtimeEntry && runtimeEntry.el) {
+        internalElement = runtimeEntry.el;
+      }
+
       const primitives = this.getPartPrimitives(name);
-      const primitiveElement = primitives.find((primitive) => primitive && primitive.el)?.el || null;
+      const runtimePrimitives =
+        runtimeEntry && Array.isArray(runtimeEntry.meshes) ? runtimeEntry.meshes : [];
+      const primitive = primitives.concat(runtimePrimitives)
+        .find((item) => item && item.el);
+      const primitiveElement = primitive ? primitive.el : null;
       const candidates = [internalElement, primitiveElement].filter(Boolean);
       for (const element of candidates) {
         if (typeof element.getComponent !== 'function') continue;
-        const transform = element.getComponent(xrFrameSystem.Transform);
+        const transform =
+          (xrFrameSystem.Transform && element.getComponent(xrFrameSystem.Transform)) ||
+          element.getComponent('transform');
         if (transform) {
           return {
             element,
@@ -216,6 +260,16 @@ Component({
         }
       }
       return null;
+    },
+
+    runtimeNodeDiagnostic() {
+      const nodeMap = this.getRuntimeNodeMap();
+      if (!nodeMap) return 'runtime-map-unavailable';
+      const samples = [];
+      nodeMap.forEach((entry, name) => {
+        if (samples.length < 2 && entry && entry.hasMesh) samples.push(String(name));
+      });
+      return `runtime-map=${nodeMap.size || 0}${samples.length ? `, sample=${samples.join('|')}` : ''}`;
     },
 
     async resolvePartRecords(xrFrameSystem) {
@@ -263,7 +317,7 @@ Component({
         );
         if (attempt < maxAttempts) await this.waitForPoseUpdate(400);
       }
-      this.interactionFailureReason = `零件节点解析失败：${lastFailures[0] || 'unknown'}`;
+      this.interactionFailureReason = `零件节点解析失败：${lastFailures[0] || 'unknown'}；${this.runtimeNodeDiagnostic()}`;
       return [];
     },
 
