@@ -26,7 +26,7 @@
       <text class="eyebrow">SOLIDWORKS ASSEMBLY</text>
       <text class="title">减速器爆炸图</text>
     </view>
-    <view class="demo-badge">GLB</view>
+    <view class="demo-badge">{{buildLabel}}</view>
   </view>
 
   <view class="part-legend" wx:if="{{ready}}">

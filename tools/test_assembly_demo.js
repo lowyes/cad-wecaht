@@ -3,6 +3,9 @@ const fs = require('fs');
 const path = require('path');
 
 const projectRoot = path.resolve(__dirname, '..');
+const projectConfig = JSON.parse(
+  fs.readFileSync(path.join(projectRoot, 'project.config.json'), 'utf8'),
+);
 const {
   ASSEMBLY_ID,
   ASSEMBLY_LAYOUTS,
@@ -18,6 +21,11 @@ const {
 } = require('./dataset-manager/glb-animation-inspector');
 
 assert.strictEqual(ASSEMBLY_ID, 'assembly_demo_0001');
+assert.strictEqual(
+  projectConfig.libVersion,
+  '3.17.2',
+  '装配体运行时必须使用已验证的微信基础库 3.17.2',
+);
 assert.deepStrictEqual(
   ASSEMBLY_PARTS.map((part) => part.id),
   ['base', 'support', 'pin'],
@@ -205,6 +213,7 @@ assert(solidworksViewerSource.includes('handleInteractionReady'));
 assert(solidworksViewerSource.includes('handleInteractionWarning'));
 assert(solidworksViewerSource.includes('handleSelectedPartAction'));
 assert(solidworksViewerSource.includes('detail.reason'));
+assert(solidworksViewerSource.includes("buildLabel: 'R4 · 3.17.2'"));
 const solidworksViewerTemplate = fs.readFileSync(
   path.join(
     projectRoot,
@@ -221,6 +230,7 @@ assert(solidworksViewerTemplate.includes('bind:interaction-warning'));
 assert(solidworksViewerTemplate.includes('bindchange="handlePartPickerChange"'));
 assert(solidworksViewerTemplate.includes('data-mode="exploded"'));
 assert(solidworksViewerTemplate.includes('data-mode="complete"'));
+assert(solidworksViewerTemplate.includes('{{buildLabel}}'));
 
 let componentDefinition = null;
 const originalComponent = global.Component;

@@ -48,6 +48,7 @@ Page({
     stateLabel: '正在加载装配体',
     stateHint: '准备 SolidWorks 减速器与爆炸动画',
     assemblyLabel: config.label,
+    buildLabel: 'R4 · 3.17.2',
     animatedNodeCount: config.animatedNodeCount,
     interactivePartCount: 0,
     partOptions: config.interactivePartNames,
