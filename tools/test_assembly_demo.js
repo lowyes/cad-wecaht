@@ -169,6 +169,8 @@ assert.strictEqual(
   solidworksConfig.interactivePartNames.length,
 );
 assert(solidworksComponent.includes('getInternalNodeByName'));
+assert(solidworksComponent.includes("model.getComponent('gltf')"));
+assert(solidworksComponent.includes('findRuntimeElement(name)'));
 assert(solidworksComponent.includes('getPrimitivesByNodeName'));
 assert(solidworksComponent.includes('resolvePartBinding(name, xrFrameSystem)'));
 assert(solidworksComponent.includes('xrFrameSystem.CubeShape'));
@@ -213,7 +215,7 @@ assert(solidworksViewerSource.includes('handleInteractionReady'));
 assert(solidworksViewerSource.includes('handleInteractionWarning'));
 assert(solidworksViewerSource.includes('handleSelectedPartAction'));
 assert(solidworksViewerSource.includes('detail.reason'));
-assert(solidworksViewerSource.includes("buildLabel: 'R4 · 3.17.2'"));
+assert(solidworksViewerSource.includes("buildLabel: 'R5 · 3.17.2'"));
 const solidworksViewerTemplate = fs.readFileSync(
   path.join(
     projectRoot,
@@ -315,6 +317,38 @@ const normalizedBinding = componentInstance.resolvePartBinding('29  挡油环-2'
 assert(normalizedBinding, '运行时折叠节点空格后仍应解析成功');
 assert.strictEqual(normalizedBinding.transform, primitiveTransform);
 assert(componentInstance.runtimeNodeDiagnostic().includes('runtime-map=1'));
+
+// Android 真机远程调试可能暴露空 _nodeMap，但 GLTF 影子节点已经挂在
+// _subRoots 中。此时必须直接按 Element.name 遍历，且不能调用会抛错的
+// getInternalNodeByName()。
+let unsafeLookupCalls = 0;
+const treeTransform = { position: { x: 4, y: 5, z: 6 } };
+const treeElement = {
+  name: '28 滚动轴承60204-2',
+  _children: [],
+  getComponent(componentClass) {
+    return componentClass === 'Transform' ? treeTransform : null;
+  },
+};
+componentInstance.gltfComponent = {
+  _nodeMap: new Map(),
+  _subRoots: [treeElement],
+  getInternalNodeByName() {
+    unsafeLookupCalls += 1;
+    throw new TypeError("Cannot read properties of undefined (reading 'el')");
+  },
+  getPrimitivesByNodeName() {
+    return [];
+  },
+};
+const treeBinding = componentInstance.resolvePartBinding('28 滚动轴承60204-2', {
+  Transform: 'Transform',
+});
+assert(treeBinding, '空节点表时应从 GLTF 子树遍历解析零件');
+assert.strictEqual(treeBinding.element, treeElement);
+assert.strictEqual(treeBinding.transform, treeTransform);
+assert.strictEqual(unsafeLookupCalls, 0, '节点表无匹配项时不得调用不安全内部 API');
+
 const originalNow = Date.now;
 const originalSetTimeout = global.setTimeout;
 const originalClearTimeout = global.clearTimeout;

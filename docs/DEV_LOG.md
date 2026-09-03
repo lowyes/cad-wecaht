@@ -358,3 +358,14 @@
 - 从运行时取得第一个零件 `29  挡油环-2` 并调用独立拆卸，返回
   `records: 58, moved: true`，确认节点记录和 Transform 操作均可用。
 - 页面右上角显示 `R4 · 3.17.2`，用于识别手机是否仍在运行旧预览缓存。
+
+### Android 真机节点表兼容 R5
+
+- 真机调试确认旧实现实际返回 `resolved: 0`，并由 XR-FRAME 内部
+  `getInternalNodeByName()` 抛出 `undefined.el`，排除图片缓存和 GLB 文件损坏。
+- GLTF 与 Animator 改为优先通过 XR-FRAME 注册名称获取，规避远程调试环境中
+  类引用与 RenderContext 已挂载组件不一致的问题。
+- 当 `_nodeMap` 不可用或为空时，新增 `_subRoots` 影子元素树遍历，按
+  `Element.name` 匹配零件；不存在的节点不再调用无空值保护的内部 API。
+- 节点准备重试由 5 次增加至 10 次，并保留每轮最佳解析结果。页面版本标识更新为
+  `R5 · 3.17.2`。

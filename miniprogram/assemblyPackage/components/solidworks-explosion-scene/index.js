@@ -56,8 +56,15 @@ Component({
       try {
         const xrFrameSystem = wx.getXrFrameSystem();
         const model = this.scene.getElementById('assembly-model');
-        this.animator = model.getComponent(xrFrameSystem.Animator);
-        this.gltfComponent = model.getComponent(xrFrameSystem.GLTF);
+        // 真机远程调试下，类引用可能与 RenderContext 中已挂载组件的类
+        // 不是同一个引用；此时按类取得的 GLTF 组件内部节点表可能为空。
+        // 字符串名称是 XR-FRAME 注册组件时使用的稳定键，应优先使用。
+        this.animator =
+          model.getComponent('animator') ||
+          model.getComponent(xrFrameSystem.Animator);
+        this.gltfComponent =
+          model.getComponent('gltf') ||
+          model.getComponent(xrFrameSystem.GLTF);
         if (!this.animator) throw new Error('未找到 Animator 组件');
         if (!this.gltfComponent) throw new Error('未找到 GLTF 组件');
 
@@ -190,19 +197,40 @@ Component({
 
     findRuntimeNodeName(name) {
       const nodeMap = this.getRuntimeNodeMap();
-      if (!nodeMap) return name;
-      if (nodeMap.get(name)) return name;
+      if (nodeMap && nodeMap.get(name)) return name;
       const expected = this.normalizeRuntimeNodeName(name);
       let matchedName = null;
-      nodeMap.forEach((entry, runtimeName) => {
-        if (
-          matchedName === null &&
-          this.normalizeRuntimeNodeName(runtimeName) === expected
-        ) {
-          matchedName = runtimeName;
-        }
-      });
+      if (nodeMap) {
+        nodeMap.forEach((entry, runtimeName) => {
+          if (
+            matchedName === null &&
+            this.normalizeRuntimeNodeName(runtimeName) === expected
+          ) {
+            matchedName = runtimeName;
+          }
+        });
+      }
+      if (!matchedName) {
+        const runtimeElement = this.findRuntimeElement(name);
+        if (runtimeElement && runtimeElement.name) matchedName = runtimeElement.name;
+      }
       return matchedName || name;
+    },
+
+    findRuntimeElement(name) {
+      const expected = this.normalizeRuntimeNodeName(name);
+      const roots =
+        this.gltfComponent && Array.isArray(this.gltfComponent._subRoots)
+          ? this.gltfComponent._subRoots.slice()
+          : [];
+      const stack = roots;
+      while (stack.length) {
+        const element = stack.pop();
+        if (!element) continue;
+        if (this.normalizeRuntimeNodeName(element.name) === expected) return element;
+        for (const child of this.getElementChildren(element)) stack.push(child);
+      }
+      return null;
     },
 
     getPartPrimitives(name) {
@@ -226,17 +254,21 @@ Component({
       const runtimeName = this.findRuntimeNodeName(name);
       const nodeMap = this.getRuntimeNodeMap();
       const runtimeEntry = nodeMap ? nodeMap.get(runtimeName) : null;
-      let internalElement = null;
-      if (typeof this.gltfComponent.getInternalNodeByName === 'function') {
+      let internalElement =
+        (runtimeEntry && runtimeEntry.el) ||
+        this.findRuntimeElement(runtimeName);
+      // 官方方法内部直接读取 this._nodeMap.get(name).el，没有空值保护。
+      // 只有确认节点表存在该名称时才调用，避免真机因 undefined.el 中断。
+      if (
+        !internalElement &&
+        runtimeEntry &&
+        typeof this.gltfComponent.getInternalNodeByName === 'function'
+      ) {
         try {
           internalElement = this.gltfComponent.getInternalNodeByName(runtimeName);
         } catch (error) {
           console.warn(`[solidworks-assembly] internal node lookup failed: ${name}`, error);
         }
-      }
-
-      if (!internalElement && runtimeEntry && runtimeEntry.el) {
-        internalElement = runtimeEntry.el;
       }
 
       const primitives = this.getPartPrimitives(name);
@@ -264,17 +296,23 @@ Component({
 
     runtimeNodeDiagnostic() {
       const nodeMap = this.getRuntimeNodeMap();
-      if (!nodeMap) return 'runtime-map-unavailable';
       const samples = [];
-      nodeMap.forEach((entry, name) => {
-        if (samples.length < 2 && entry && entry.hasMesh) samples.push(String(name));
-      });
-      return `runtime-map=${nodeMap.size || 0}${samples.length ? `, sample=${samples.join('|')}` : ''}`;
+      if (nodeMap) {
+        nodeMap.forEach((entry, name) => {
+          if (samples.length < 2 && entry && entry.hasMesh) samples.push(String(name));
+        });
+      }
+      const roots =
+        this.gltfComponent && Array.isArray(this.gltfComponent._subRoots)
+          ? this.gltfComponent._subRoots
+          : [];
+      return `runtime-map=${nodeMap ? nodeMap.size || 0 : 'unavailable'}, roots=${roots.length}${samples.length ? `, sample=${samples.join('|')}` : ''}`;
     },
 
     async resolvePartRecords(xrFrameSystem) {
-      const maxAttempts = 5;
+      const maxAttempts = 10;
       let lastFailures = [];
+      let bestRecords = [];
       for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
         if (this.disposed || !this.gltfComponent) return [];
         const failures = [];
@@ -304,7 +342,8 @@ Component({
             }
           })
           .filter(Boolean);
-        if (records.length) {
+        if (records.length > bestRecords.length) bestRecords = records;
+        if (records.length === config.interactivePartNames.length) {
           if (attempt > 1) {
             console.log(`[solidworks-assembly] part nodes resolved on attempt ${attempt}`);
           }
@@ -316,6 +355,10 @@ Component({
           failures.slice(0, 5),
         );
         if (attempt < maxAttempts) await this.waitForPoseUpdate(400);
+      }
+      if (bestRecords.length) {
+        this.interactionFailureReason = `已解析 ${bestRecords.length}/${config.interactivePartNames.length} 个零件节点；${this.runtimeNodeDiagnostic()}`;
+        return bestRecords;
       }
       this.interactionFailureReason = `零件节点解析失败：${lastFailures[0] || 'unknown'}；${this.runtimeNodeDiagnostic()}`;
       return [];
