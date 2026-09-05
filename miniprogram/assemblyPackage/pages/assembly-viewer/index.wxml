@@ -71,19 +71,19 @@
       <view class="part-action part-restore {{partBusy || busy ? 'disabled' : ''}}" data-mode="complete" bindtap="handleSelectedPartAction">单件安装</view>
     </view>
     <view class="mode-grid">
-      <view class="mode-button {{activeAction === 'install' ? 'active' : ''}} {{busy ? 'disabled' : ''}}" hover-class="button-hover" data-action="install" bindtap="handleModeTap">
+      <view class="mode-button {{activeAction === 'install' ? 'active' : ''}} {{busy || partBusy ? 'disabled' : ''}}" hover-class="button-hover" data-action="install" bindtap="handleModeTap">
         <view class="mode-icon install-icon"><view></view><view></view><view></view></view>
         <text class="mode-title">安装</text><text class="mode-subtitle">反向轨道</text>
       </view>
-      <view class="mode-button {{activeAction === 'explode' ? 'active' : ''}} {{busy ? 'disabled' : ''}}" hover-class="button-hover" data-action="explode" bindtap="handleModeTap">
+      <view class="mode-button {{activeAction === 'explode' ? 'active' : ''}} {{busy || partBusy ? 'disabled' : ''}}" hover-class="button-hover" data-action="explode" bindtap="handleModeTap">
         <view class="mode-icon explode-icon"><view></view><view></view><view></view></view>
         <text class="mode-title">拆卸</text><text class="mode-subtitle">原始爆炸</text>
       </view>
-      <view class="mode-button {{activeAction === 'section' ? 'active' : ''}} {{busy ? 'disabled' : ''}}" hover-class="button-hover" data-action="section" bindtap="handleModeTap">
+      <view class="mode-button {{activeAction === 'section' ? 'active' : ''}} {{busy || partBusy ? 'disabled' : ''}}" hover-class="button-hover" data-action="section" bindtap="handleModeTap">
         <view class="mode-icon section-icon"><view></view><view></view></view>
         <text class="mode-title">分层</text><text class="mode-subtitle">中段观察</text>
       </view>
-      <view class="mode-button {{activeAction === 'complete' ? 'active' : ''}} {{busy ? 'disabled' : ''}}" hover-class="button-hover" data-action="complete" bindtap="handleModeTap">
+      <view class="mode-button {{activeAction === 'complete' ? 'active' : ''}} {{busy || partBusy ? 'disabled' : ''}}" hover-class="button-hover" data-action="complete" bindtap="handleModeTap">
         <view class="mode-icon complete-icon"><view></view></view>
         <text class="mode-title">完整</text><text class="mode-subtitle">回到起点</text>
       </view>

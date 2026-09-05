@@ -1,5 +1,9 @@
 const config = require('../../config/assembly_0001');
 
+const FRAME_INTERVAL_MS = 32;
+const PART_MOVE_DURATION_MS = 620;
+const POSITION_EPSILON_SQUARED = 1e-10;
+
 function vectorToText(vector) {
   return vector.map((value) => Number(value) || 0).join(' ');
 }
@@ -17,11 +21,18 @@ Component({
       this.disposed = true;
       this.animationToken = (this.animationToken || 0) + 1;
       clearTimeout(this.animationTimer);
+      clearTimeout(this.completionTimer);
+      clearTimeout(this.interactionStartTimer);
       this.cancelAllPartAnimations();
+      this.releasePartEventBindings();
       this.stopRawPartDrag();
       this.animationTimer = null;
+      this.completionTimer = null;
+      this.interactionStartTimer = null;
       this.animator = null;
       this.gltfComponent = null;
+      this.runtimeMeshBindings = null;
+      this.runtimeMeshBindingsOwner = null;
       this.cameraOrbit = null;
       this.cameraTransform = null;
       this.partRecords = [];
@@ -81,7 +92,8 @@ Component({
         // 初始化零件交互；单个节点失败时不能把正常 GLB 误报为加载失败。
         if (this.interactionPrepared) return;
         this.interactionPrepared = true;
-        setTimeout(() => {
+        this.interactionStartTimer = setTimeout(() => {
+          this.interactionStartTimer = null;
           if (this.disposed) return;
           this.prepareInteractiveParts(xrFrameSystem)
             .then((interactivePartCount) => {
@@ -143,6 +155,31 @@ Component({
       transform.position.z = position[2];
     },
 
+    positionDistanceSquared(left, right) {
+      if (!left || !right) return Number.POSITIVE_INFINITY;
+      const dx = left[0] - right[0];
+      const dy = left[1] - right[1];
+      const dz = left[2] - right[2];
+      return dx * dx + dy * dy + dz * dz;
+    },
+
+    getElementComponent(element, name, componentClass) {
+      if (!element || typeof element.getComponent !== 'function') return null;
+      try {
+        const byName = name ? element.getComponent(name) : null;
+        if (byName) return byName;
+      } catch (error) {
+        console.warn(`[solidworks-assembly] component lookup failed: ${name}`, error);
+      }
+      if (!componentClass) return null;
+      try {
+        return element.getComponent(componentClass) || null;
+      } catch (error) {
+        console.warn('[solidworks-assembly] class component lookup failed', error);
+        return null;
+      }
+    },
+
     getElementChildren(element) {
       if (typeof element.getChildrenByFilter === 'function') {
         return element.getChildrenByFilter(() => true);
@@ -151,11 +188,7 @@ Component({
     },
 
     getComponentMesh(target, meshClass) {
-      if (meshClass && target.getComponent(meshClass)) return target.getComponent(meshClass);
-      if (typeof target.getComponent === 'function') {
-        return target.getComponent('mesh');
-      }
-      return null;
+      return this.getElementComponent(target, 'mesh', meshClass);
     },
 
     findFirstMeshElement(element, meshClass) {
@@ -169,7 +202,6 @@ Component({
         return found;
       }
       // 兼容缺少 dfs 的旧运行时：手动遍历子元素查找 Mesh
-      if (this.getComponentMesh(element, meshClass)) return element;
       const stack = this.getElementChildren(element);
       while (stack.length && !found) {
         const target = stack.pop();
@@ -233,6 +265,52 @@ Component({
       return null;
     },
 
+    getRuntimeMeshBindings() {
+      if (
+        this.runtimeMeshBindings &&
+        this.runtimeMeshBindingsOwner === this.gltfComponent
+      ) {
+        return this.runtimeMeshBindings;
+      }
+      const meshes =
+        this.gltfComponent && Array.isArray(this.gltfComponent.meshes)
+          ? this.gltfComponent.meshes
+          : [];
+      const bindings = [];
+      const seenElements = [];
+      for (const mesh of meshes) {
+        const hitElement = mesh && mesh.el;
+        if (!hitElement) continue;
+        // XR-FRAME 实例化 glTF 时，每个 primitive Mesh 元素的父元素就是
+        // 对应的 glTF Node。GLTF.meshes 是公开接口，在 Android 真机上也
+        // 可用；不再依赖可能为空的私有 _nodeMap / _subRoots。
+        const element = hitElement._parent || hitElement.parent || hitElement;
+        const existingIndex = seenElements.indexOf(element);
+        if (existingIndex >= 0) {
+          bindings[existingIndex].hitElements.push(hitElement);
+          continue;
+        }
+        seenElements.push(element);
+        bindings.push({ element, hitElement, hitElements: [hitElement] });
+      }
+      this.runtimeMeshBindings = bindings;
+      this.runtimeMeshBindingsOwner = this.gltfComponent;
+      return bindings;
+    },
+
+    findRuntimeMeshBinding(name, partIndex) {
+      const expected = this.normalizeRuntimeNodeName(name);
+      const bindings = this.getRuntimeMeshBindings();
+      const namedBinding = bindings.find(
+        (binding) => this.normalizeRuntimeNodeName(binding.element.name) === expected,
+      );
+      if (namedBinding) return namedBinding;
+
+      const ordinals = config.interactivePartMeshOrdinals || [];
+      const ordinal = Number(ordinals[partIndex]);
+      return Number.isInteger(ordinal) ? bindings[ordinal] || null : null;
+    },
+
     getPartPrimitives(name) {
       if (
         !this.gltfComponent ||
@@ -250,13 +328,15 @@ Component({
       }
     },
 
-    resolvePartBinding(name, xrFrameSystem) {
+    resolvePartBinding(name, xrFrameSystem, partIndex = -1) {
       const runtimeName = this.findRuntimeNodeName(name);
       const nodeMap = this.getRuntimeNodeMap();
       const runtimeEntry = nodeMap ? nodeMap.get(runtimeName) : null;
+      const meshBinding = this.findRuntimeMeshBinding(name, partIndex);
       let internalElement =
         (runtimeEntry && runtimeEntry.el) ||
-        this.findRuntimeElement(runtimeName);
+        this.findRuntimeElement(runtimeName) ||
+        (meshBinding && meshBinding.element);
       // 官方方法内部直接读取 this._nodeMap.get(name).el，没有空值保护。
       // 只有确认节点表存在该名称时才调用，避免真机因 undefined.el 中断。
       if (
@@ -276,18 +356,32 @@ Component({
         runtimeEntry && Array.isArray(runtimeEntry.meshes) ? runtimeEntry.meshes : [];
       const primitive = primitives.concat(runtimePrimitives)
         .find((item) => item && item.el);
-      const primitiveElement = primitive ? primitive.el : null;
+      const primitiveElement = primitive
+        ? primitive.el
+        : meshBinding && meshBinding.hitElement;
+      const hitElements = [];
+      for (const item of primitives.concat(runtimePrimitives)) {
+        if (item && item.el && hitElements.indexOf(item.el) < 0) {
+          hitElements.push(item.el);
+        }
+      }
+      for (const element of (meshBinding && meshBinding.hitElements) || []) {
+        if (element && hitElements.indexOf(element) < 0) hitElements.push(element);
+      }
+      if (!hitElements.length && primitiveElement) hitElements.push(primitiveElement);
       const candidates = [internalElement, primitiveElement].filter(Boolean);
       for (const element of candidates) {
-        if (typeof element.getComponent !== 'function') continue;
-        const transform =
-          (xrFrameSystem.Transform && element.getComponent(xrFrameSystem.Transform)) ||
-          element.getComponent('transform');
+        const transform = this.getElementComponent(
+          element,
+          'transform',
+          xrFrameSystem.Transform,
+        );
         if (transform) {
           return {
             element,
             transform,
             hitElement: primitiveElement || element,
+            hitElements,
           };
         }
       }
@@ -306,7 +400,8 @@ Component({
         this.gltfComponent && Array.isArray(this.gltfComponent._subRoots)
           ? this.gltfComponent._subRoots
           : [];
-      return `runtime-map=${nodeMap ? nodeMap.size || 0 : 'unavailable'}, roots=${roots.length}${samples.length ? `, sample=${samples.join('|')}` : ''}`;
+      const meshBindings = this.getRuntimeMeshBindings();
+      return `runtime-map=${nodeMap ? nodeMap.size || 0 : 'unavailable'}, roots=${roots.length}, mesh-bindings=${meshBindings.length}${samples.length ? `, sample=${samples.join('|')}` : ''}`;
     },
 
     async resolvePartRecords(xrFrameSystem) {
@@ -315,11 +410,15 @@ Component({
       let bestRecords = [];
       for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
         if (this.disposed || !this.gltfComponent) return [];
+        // meshes 在部分 Android 机型上会晚于 gltf-loaded 一到数帧可见。
+        // 每轮重试必须刷新缓存，否则第一次得到的空列表会被永久复用。
+        this.runtimeMeshBindings = null;
+        this.runtimeMeshBindingsOwner = null;
         const failures = [];
         const records = config.interactivePartNames
-          .map((name) => {
+          .map((name, partIndex) => {
             try {
-              const binding = this.resolvePartBinding(name, xrFrameSystem);
+              const binding = this.resolvePartBinding(name, xrFrameSystem, partIndex);
               if (!binding) {
                 failures.push(`${name}:not-found`);
                 return null;
@@ -329,10 +428,12 @@ Component({
                 element: binding.element,
                 transform: binding.transform,
                 hitElement: binding.hitElement,
+                hitElements: binding.hitElements,
                 basePosition: null,
                 explodedPosition: null,
                 isExploded: false,
                 dragged: false,
+                eventBindings: [],
                 eventsBound: false,
                 animationToken: 0,
               };
@@ -364,36 +465,183 @@ Component({
       return [];
     },
 
+    async waitForGlobalAnimationIdle() {
+      const maxWaitMs = config.durationMs + 1200;
+      const startedAt = Date.now();
+      while (this.animating && !this.disposed) {
+        if (Date.now() - startedAt >= maxWaitMs) return false;
+        await this.waitForPoseUpdate(50);
+      }
+      return !this.disposed;
+    },
+
+    installPartInteraction(record, xrFrameSystem) {
+      const meshClass = xrFrameSystem.Mesh;
+      const shapeClass = xrFrameSystem.CubeShape;
+      const shapeInteractClass = xrFrameSystem.ShapeInteract;
+      const hitElements = Array.isArray(record.hitElements)
+        ? record.hitElements.filter(Boolean)
+        : [];
+      if (!hitElements.length && record.hitElement) {
+        hitElements.push(record.hitElement);
+      }
+      if (!hitElements.length) {
+        const fallbackElement = this.findFirstMeshElement(record.element, meshClass);
+        if (fallbackElement) hitElements.push(fallbackElement);
+      }
+      if (!hitElements.length) {
+        return { stage: 'mesh', reason: '零件子树中未找到 Mesh 元素' };
+      }
+      const uniqueHitElements = hitElements.filter(
+        (element, index) => hitElements.indexOf(element) === index,
+      );
+      const bindings = Array.isArray(record.eventBindings)
+        ? record.eventBindings
+        : [];
+      const initialBindingCount = bindings.length;
+      const rollbackNewBindings = () => {
+        for (const binding of bindings.slice(initialBindingCount)) {
+          const event = binding.element && binding.element.event;
+          if (!event || typeof event.remove !== 'function') continue;
+          event.remove('touch-shape', binding.touch);
+          event.remove('drag-shape', binding.drag);
+          event.remove('untouch-shape', binding.untouch);
+        }
+        bindings.splice(initialBindingCount);
+      };
+      const fail = (stage, reason) => {
+        rollbackNewBindings();
+        return { stage, reason };
+      };
+      try {
+        for (const hitElement of uniqueHitElements) {
+          if (
+            !hitElement.event ||
+            typeof hitElement.event.add !== 'function' ||
+            typeof hitElement.addComponent !== 'function'
+          ) {
+            return fail('event', '元素事件或组件接口不可用');
+          }
+
+          // Shape 只负责碰撞体；没有 ShapeInteract 时运行时会把
+          // nativeCollider.interactType 保持为 None，射线不会产生触摸事件。
+          let shapeInteract = this.getElementComponent(
+            hitElement,
+            'shape-interact',
+            shapeInteractClass,
+          );
+          if (!shapeInteract) {
+            shapeInteract = hitElement.addComponent(shapeInteractClass, {
+              disabled: false,
+              collide: false,
+            });
+          }
+          if (!shapeInteract) {
+            return fail('shape-interact', 'addComponent 未返回组件');
+          }
+
+          let shape = this.getElementComponent(
+            hitElement,
+            'cube-shape',
+            shapeClass,
+          );
+          if (!shape) {
+            shape = hitElement.addComponent(shapeClass, { autoFit: true });
+          }
+          if (!shape) {
+            return fail('shape', 'addComponent 未返回组件');
+          }
+          if (bindings.some((binding) => binding.element === hitElement)) continue;
+          const handlers = {
+            touch: (event) => this.handlePartTouch(record, event),
+            drag: (event) => this.handlePartDrag(record, event),
+            untouch: () => this.handlePartUntouch(record),
+          };
+          hitElement.event.add('touch-shape', handlers.touch);
+          hitElement.event.add('drag-shape', handlers.drag);
+          hitElement.event.add('untouch-shape', handlers.untouch);
+          bindings.push({ element: hitElement, ...handlers });
+        }
+      } catch (error) {
+        rollbackNewBindings();
+        throw error;
+      }
+      record.hitElements = uniqueHitElements;
+      record.hitElement = uniqueHitElements[0];
+      record.eventBindings = bindings;
+      record.eventsBound = bindings.length > 0;
+      return null;
+    },
+
+    releasePartEventBindings() {
+      for (const record of this.partRecords || []) {
+        for (const binding of record.eventBindings || []) {
+          const event = binding.element && binding.element.event;
+          if (!event || typeof event.remove !== 'function') continue;
+          event.remove('touch-shape', binding.touch);
+          event.remove('drag-shape', binding.drag);
+          event.remove('untouch-shape', binding.untouch);
+        }
+        record.eventBindings = [];
+        record.eventsBound = false;
+      }
+    },
+
     async prepareInteractiveParts(xrFrameSystem) {
+      this.interactionFailureReason = '';
       this.partRecords = await this.resolvePartRecords(xrFrameSystem);
       if (this.disposed) return 0;
 
-      await this.waitForPoseUpdate();
-      for (const record of this.partRecords) {
-        record.basePosition = this.clonePosition(record.transform);
+      if (!(await this.waitForGlobalAnimationIdle())) {
+        throw new Error('等待整体动画结束超时');
       }
-      this.applyAnimationProgress(1);
-      await this.waitForPoseUpdate();
-      for (const record of this.partRecords) {
-        record.explodedPosition = this.clonePosition(record.transform);
+
+      this.interactionPoseSampling = true;
+      const restoreProgress = Math.max(
+        0,
+        Math.min(1, Number(this.animationProgress) || 0),
+      );
+      try {
+        this.applyAnimationProgress(0);
+        await this.waitForPoseUpdate();
+        for (const record of this.partRecords) {
+          record.basePosition = this.clonePosition(record.transform);
+        }
+        this.applyAnimationProgress(1);
+        await this.waitForPoseUpdate();
+        for (const record of this.partRecords) {
+          record.explodedPosition = this.clonePosition(record.transform);
+        }
+        this.applyAnimationProgress(restoreProgress);
+        await this.waitForPoseUpdate();
+        if (restoreProgress <= 0) this.syncPartEndpointState(false);
+        if (restoreProgress >= 1) this.syncPartEndpointState(true);
+      } finally {
+        this.interactionPoseSampling = false;
       }
-      this.applyAnimationProgress(0);
-      await this.waitForPoseUpdate();
+      if (this.disposed) return 0;
 
       const camera = this.scene ? this.scene.getElementById('camera') : null;
-      this.cameraOrbit = camera
-        ? camera.getComponent(xrFrameSystem.CameraOrbitControl)
-        : null;
-      this.cameraTransform = camera
-        ? camera.getComponent(xrFrameSystem.Transform)
-        : null;
-      const cameraComponent = camera
-        ? camera.getComponent(xrFrameSystem.Camera)
-        : null;
+      this.cameraOrbit = this.getElementComponent(
+        camera,
+        'camera-orbit-control',
+        xrFrameSystem.CameraOrbitControl,
+      );
+      this.cameraOrbitLocked = false;
+      this.cameraTransform = this.getElementComponent(
+        camera,
+        'transform',
+        xrFrameSystem.Transform,
+      );
+      const cameraComponent = this.getElementComponent(
+        camera,
+        'camera',
+        xrFrameSystem.Camera,
+      );
       this.cameraFov = Number(cameraComponent && cameraComponent.fov) || 60;
 
-      const meshClass = xrFrameSystem.Mesh;
       const shapeClass = xrFrameSystem.CubeShape;
+      const shapeInteractClass = xrFrameSystem.ShapeInteract;
       const failures = [];
       const noteFailure = (stage, name, reason) => {
         failures.push({ stage, name, reason });
@@ -401,36 +649,22 @@ Component({
       if (typeof shapeClass !== 'function') {
         noteFailure('shape-class', '-', 'xrFrameSystem.CubeShape 不可用');
       }
+      if (typeof shapeInteractClass !== 'function') {
+        noteFailure('interact-class', '-', 'xrFrameSystem.ShapeInteract 不可用');
+      }
 
       const interactiveRecords = [];
-      if (typeof shapeClass === 'function') {
+      if (
+        typeof shapeClass === 'function' &&
+        typeof shapeInteractClass === 'function'
+      ) {
         for (let index = 0; index < this.partRecords.length; index += 1) {
           const record = this.partRecords[index];
           try {
-            const hitElement =
-              record.hitElement ||
-              this.findFirstMeshElement(record.element, meshClass);
-            if (!hitElement) {
-              noteFailure('mesh', record.name, '零件子树中未找到 Mesh 元素');
+            const failure = this.installPartInteraction(record, xrFrameSystem);
+            if (failure) {
+              noteFailure(failure.stage, record.name, failure.reason);
               continue;
-            }
-            if (!hitElement.event || typeof hitElement.event.add !== 'function') {
-              noteFailure('event', record.name, '元素事件中心不可用');
-              continue;
-            }
-            let shape = hitElement.getComponent(shapeClass);
-            if (!shape) {
-              shape = hitElement.addComponent(shapeClass, { autoFit: true });
-            }
-            if (!shape) {
-              noteFailure('shape', record.name, 'addComponent 未返回组件');
-              continue;
-            }
-            if (!record.eventsBound) {
-              hitElement.event.add('touch-shape', (event) => this.handlePartTouch(record, event));
-              hitElement.event.add('drag-shape', (event) => this.handlePartDrag(record, event));
-              hitElement.event.add('untouch-shape', () => this.handlePartUntouch(record));
-              record.eventsBound = true;
             }
             interactiveRecords.push(record);
           } catch (error) {
@@ -462,6 +696,8 @@ Component({
     setCameraOrbitLocked(locked) {
       const orbit = this.cameraOrbit;
       if (!orbit) return;
+      if (this.cameraOrbitLocked === locked) return;
+      this.cameraOrbitLocked = locked;
       // 规避运行时缺陷：CameraOrbitControl.disable() 只摘除 touchstart/wheel，
       // 进行中手势的 touchmove/touchend 仍会驱动相机旋转，需手动清理，
       // 并配合 isLock* 开关确保拖动零件时相机完全静止。
@@ -491,6 +727,7 @@ Component({
       if (!cameraTransform || !scene) return fallbackStep;
       const partWorld = record.transform.worldPosition;
       const cameraWorld = cameraTransform.worldPosition;
+      if (!partWorld || !cameraWorld) return fallbackStep;
       const dx = partWorld.x - cameraWorld.x;
       const dy = partWorld.y - cameraWorld.y;
       const dz = partWorld.z - cameraWorld.z;
@@ -499,6 +736,7 @@ Component({
       const sceneHeight = Math.max(1, Number(scene.height) || 667);
       const worldPerPixel = (2 * distance * Math.tan(fovRad / 2)) / sceneHeight;
       const worldScale = record.transform.worldScale;
+      if (!worldScale) return fallbackStep;
       const scale =
         (Math.abs(worldScale.x) + Math.abs(worldScale.y) + Math.abs(worldScale.z)) / 3;
       if (!Number.isFinite(scale) || scale < 1e-6) return fallbackStep;
@@ -511,39 +749,67 @@ Component({
         (payload.changedTouches && payload.changedTouches[0]) ||
         (payload.touches && payload.touches[0]);
       if (touch) {
+        const x = Number(touch.x != null ? touch.x : touch.pageX);
+        const y = Number(touch.y != null ? touch.y : touch.pageY);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
         return {
-          x: Number(touch.x != null ? touch.x : touch.pageX) || 0,
-          y: Number(touch.y != null ? touch.y : touch.pageY) || 0,
+          x,
+          y,
         };
       }
+      const x = Number(payload.x);
+      const y = Number(payload.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
       return {
-        x: Number(payload.x) || 0,
-        y: Number(payload.y) || 0,
+        x,
+        y,
       };
+    },
+
+    applyPartDragPoint(record, point) {
+      if (!point) return false;
+      const previous = this.rawPartDragPoint;
+      this.rawPartDragPoint = point;
+      if (!previous) return false;
+      this.applyPartDragDelta(
+        record,
+        point.x - previous.x,
+        point.y - previous.y,
+      );
+      return true;
     },
 
     startRawPartDrag(record, event) {
       this.stopRawPartDrag();
       if (!this.scene || !this.scene.event) return false;
       const point = this.touchPointFromEvent(event);
+      if (!point) return false;
+      if (
+        typeof this.scene.event.add !== 'function' ||
+        typeof this.scene.event.remove !== 'function'
+      ) {
+        return false;
+      }
       this.rawPartDragActive = true;
       this.rawPartDragPoint = point;
       this.rawPartMoveHandler = (moveEvent) => {
         if (!this.rawPartDragActive || this.activePart !== record) return;
-        const nextPoint = this.touchPointFromEvent(moveEvent);
-        const deltaX = nextPoint.x - this.rawPartDragPoint.x;
-        const deltaY = nextPoint.y - this.rawPartDragPoint.y;
-        this.rawPartDragPoint = nextPoint;
-        this.applyPartDragDelta(record, deltaX, deltaY);
+        this.applyPartDragPoint(record, this.touchPointFromEvent(moveEvent));
       };
       this.rawPartEndHandler = () => this.handlePartUntouch(record);
       this.scene.event.add('touchmove', this.rawPartMoveHandler);
-      this.scene.event.addOnce('touchend', this.rawPartEndHandler);
+      // 不使用 addOnce：部分事件实现会包装原回调，取消拖动时无法再用
+      // 原函数 remove，容易留下悬挂的 touchend 监听。
+      this.scene.event.add('touchend', this.rawPartEndHandler);
       return true;
     },
 
     stopRawPartDrag() {
-      if (this.scene && this.scene.event) {
+      if (
+        this.scene &&
+        this.scene.event &&
+        typeof this.scene.event.remove === 'function'
+      ) {
         if (this.rawPartMoveHandler) {
           this.scene.event.remove('touchmove', this.rawPartMoveHandler);
         }
@@ -571,9 +837,15 @@ Component({
 
     handlePartDrag(record, event) {
       if (!this.ready || this.animating || this.activePart !== record) return;
-      // 原始 touchmove 已接管时忽略合成 drag-shape，避免同一位移应用两次。
-      if (this.rawPartDragActive) return;
       const payload = this.eventPayload(event);
+      // 原始 touchmove 和 drag-shape 在不同真机上的触发顺序并不固定。
+      // 两路都用绝对触点更新同一个 lastPoint，同一帧的第二次回调增量为 0，
+      // 因此既能互为回退，也不会重复移动。
+      const point = this.touchPointFromEvent(event);
+      if (point && this.rawPartDragPoint) {
+        this.applyPartDragPoint(record, point);
+        return;
+      }
       const deltaX = Number(payload.deltaX) || 0;
       const deltaY = Number(payload.deltaY) || 0;
       this.applyPartDragDelta(record, deltaX, deltaY);
@@ -585,6 +857,11 @@ Component({
       record.animationToken += 1;
       record.dragged = true;
       const step = this.getDragScale(record);
+      const configuredDirection = Array.isArray(config.dragScreenDirection)
+        ? config.dragScreenDirection
+        : [1, 1];
+      const screenDeltaX = deltaX * (Number(configuredDirection[0]) < 0 ? -1 : 1);
+      const screenDeltaY = deltaY * (Number(configuredDirection[1]) < 0 ? -1 : 1);
       const right = this.cameraTransform
         ? this.cameraTransform.worldRight
         : { x: 1, y: 0, z: 0 };
@@ -592,9 +869,9 @@ Component({
         ? this.cameraTransform.worldUp
         : { x: 0, y: 1, z: 0 };
       const position = record.transform.position;
-      position.x += (right.x * deltaX - up.x * deltaY) * step;
-      position.y += (right.y * deltaX - up.y * deltaY) * step;
-      position.z += (right.z * deltaX - up.z * deltaY) * step;
+      position.x += (right.x * screenDeltaX - up.x * screenDeltaY) * step;
+      position.y += (right.y * screenDeltaX - up.y * screenDeltaY) * step;
+      position.z += (right.z * screenDeltaX - up.z * screenDeltaY) * step;
       if (!wasDragged) {
         this.triggerEvent('part-selected', {
           name: record.name,
@@ -619,20 +896,32 @@ Component({
     },
 
     togglePartPosition(record) {
-      const moveToExploded = !record.isExploded;
+      const currentPosition = this.clonePosition(record.transform);
+      const distanceToBase = this.positionDistanceSquared(
+        currentPosition,
+        record.basePosition,
+      );
+      const distanceToExploded = this.positionDistanceSquared(
+        currentPosition,
+        record.explodedPosition,
+      );
+      const moveToExploded = distanceToBase <= distanceToExploded;
       const target = moveToExploded
         ? record.explodedPosition
         : record.basePosition;
-      record.isExploded = moveToExploded;
-      this.animatePartTo(record, target, moveToExploded ? 'exploded' : 'complete');
+      return this.animatePartTo(
+        record,
+        target,
+        moveToExploded ? 'exploded' : 'complete',
+      );
     },
 
     setPartPosition(name, mode) {
-      if (!this.ready || this.animating) return false;
+      if (!this.ready || this.animating || this.interactionPoseSampling) return false;
+      if (mode !== 'exploded' && mode !== 'complete') return false;
       const record = (this.partRecords || []).find((item) => item.name === name);
       if (!record) return false;
       const moveToExploded = mode === 'exploded';
-      record.isExploded = moveToExploded;
       const target = moveToExploded
         ? record.explodedPosition
         : record.basePosition;
@@ -646,14 +935,21 @@ Component({
     animatePartTo(record, target, state) {
       if (!target) return false;
       record.animationToken += 1;
+      clearTimeout(record.animationTimer);
       const token = record.animationToken;
       const start = this.clonePosition(record.transform);
       const startedAt = Date.now();
-      const durationMs = 620;
+      const durationMs = PART_MOVE_DURATION_MS;
       this.triggerEvent('part-selected', {
         name: record.name,
         action: state === 'exploded' ? 'moving-out' : 'moving-back',
       });
+      if (this.positionDistanceSquared(start, target) <= POSITION_EPSILON_SQUARED) {
+        this.setTransformPosition(record.transform, target);
+        record.isExploded = state === 'exploded';
+        this.triggerEvent('part-selected', { name: record.name, action: state });
+        return true;
+      }
       const tick = () => {
         if (this.disposed || token !== record.animationToken) return;
         const ratio = Math.min(1, (Date.now() - startedAt) / durationMs);
@@ -664,19 +960,22 @@ Component({
           start[2] + (target[2] - start[2]) * eased,
         ]);
         if (ratio >= 1) {
+          record.animationTimer = null;
+          record.isExploded = state === 'exploded';
           this.triggerEvent('part-selected', {
             name: record.name,
             action: state,
           });
           return;
         }
-        record.animationTimer = setTimeout(tick, 32);
+        record.animationTimer = setTimeout(tick, FRAME_INTERVAL_MS);
       };
       record.animationTimer = setTimeout(tick, 0);
       return true;
     },
 
     cancelAllPartAnimations() {
+      this.stopRawPartDrag();
       for (const record of this.partRecords || []) {
         record.animationToken += 1;
         clearTimeout(record.animationTimer);
@@ -684,6 +983,12 @@ Component({
       }
       this.setCameraOrbitLocked(false);
       this.activePart = null;
+    },
+
+    syncPartEndpointState(isExploded) {
+      for (const record of this.partRecords || []) {
+        record.isExploded = isExploded;
+      }
     },
 
     applyAnimationProgress(progress) {
@@ -698,15 +1003,27 @@ Component({
 
     setAnimationProgress(progress) {
       if (!this.animator) return false;
+      this.cancelAllPartAnimations();
       this.animationToken = (this.animationToken || 0) + 1;
       clearTimeout(this.animationTimer);
       this.animationTimer = null;
       this.animating = false;
-      return this.applyAnimationProgress(progress);
+      const applied = this.applyAnimationProgress(progress);
+      if (!applied) return false;
+      if (this.animationProgress <= 0) this.syncPartEndpointState(false);
+      if (this.animationProgress >= 1) this.syncPartEndpointState(true);
+      return true;
     },
 
     animateToProgress(targetProgress, mode) {
-      if (!this.ready || !this.animator || this.animating) return false;
+      if (
+        !this.ready ||
+        !this.animator ||
+        this.animating ||
+        this.interactionPoseSampling
+      ) {
+        return false;
+      }
       this.cancelAllPartAnimations();
       this.animationToken = (this.animationToken || 0) + 1;
       const token = this.animationToken;
@@ -741,7 +1058,7 @@ Component({
           this.finishAnimation(token);
           return;
         }
-        this.animationTimer = setTimeout(tick, 32);
+        this.animationTimer = setTimeout(tick, FRAME_INTERVAL_MS);
       };
       this.animationTimer = setTimeout(tick, 0);
       return true;
@@ -760,9 +1077,7 @@ Component({
       this.animating = false;
       if (this.currentMode === 'exploded' || this.currentMode === 'complete') {
         const isExploded = this.currentMode === 'exploded';
-        for (const record of this.partRecords || []) {
-          record.isExploded = isExploded;
-        }
+        this.syncPartEndpointState(isExploded);
       }
       this.triggerEvent('animation-end', { mode: this.currentMode });
     },
@@ -780,10 +1095,12 @@ Component({
     },
 
     showComplete() {
-      if (!this.ready || this.animating) return false;
+      if (!this.ready || this.animating || this.interactionPoseSampling) return false;
+      if (!this.setAnimationProgress(0)) return false;
       this.triggerEvent('animation-start', { mode: 'complete' });
-      this.setAnimationProgress(0);
-      setTimeout(() => {
+      clearTimeout(this.completionTimer);
+      this.completionTimer = setTimeout(() => {
+        this.completionTimer = null;
         if (!this.disposed) this.triggerEvent('animation-end', { mode: 'complete' });
       }, 80);
       return true;

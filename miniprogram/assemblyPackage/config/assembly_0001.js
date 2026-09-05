@@ -10,6 +10,9 @@ const ASSEMBLY_CONFIG = {
   durationMs: 4000,
   scale: 5,
   rotation: [0, 0, 0],
+  // XR-FRAME 真机的相机横轴与屏幕横向拖动相反，纵轴方向正常。
+  // 在进入世界坐标换算前只校正横轴，使零件跟随手指同向移动。
+  dragScreenDirection: [-1, 1],
   animatedNodeCount: 58,
   triangleCount: 63681,
   interactivePartNames: [
@@ -71,6 +74,16 @@ const ASSEMBLY_CONFIG = {
     '10  通气塞-1',
     '28 滚动轴承60204-2',
     '16  螺母M8-3',
+  ],
+  // 每个值是该零件在 glTF「带 Mesh 的节点」中的顺序。索引 6 是不参与
+  // 爆炸动画的箱座，因此跳过。Android 真机不暴露节点名称表时，仍可
+  // 通过公开的 GLTF.meshes 列表稳定绑定到 58 个零件。
+  interactivePartMeshOrdinals: [
+    0, 1, 2, 3, 4, 5,
+    7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+    21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34,
+    35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
+    49, 50, 51, 52, 53, 54, 55, 56, 57, 58,
   ],
 };
 

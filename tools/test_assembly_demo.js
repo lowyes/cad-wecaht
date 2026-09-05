@@ -18,6 +18,7 @@ const {
 } = require(path.join(projectRoot, 'miniprogram', 'utils', 'assembly_animation'));
 const {
   inspectGlbAnimation,
+  parseGlb,
 } = require('./dataset-manager/glb-animation-inspector');
 
 assert.strictEqual(ASSEMBLY_ID, 'assembly_demo_0001');
@@ -168,12 +169,33 @@ assert.strictEqual(
   new Set(solidworksConfig.interactivePartNames).size,
   solidworksConfig.interactivePartNames.length,
 );
+const solidworksJson = parseGlb(solidworksModel).json;
+const meshNodeNames = [];
+const collectMeshNodes = (nodeIndex) => {
+  const node = solidworksJson.nodes[nodeIndex];
+  if (Number.isInteger(node.mesh)) meshNodeNames.push(node.name);
+  for (const childIndex of node.children || []) collectMeshNodes(childIndex);
+};
+for (const rootNodeIndex of solidworksJson.scenes[solidworksJson.scene || 0].nodes) {
+  collectMeshNodes(rootNodeIndex);
+}
+assert.deepStrictEqual(
+  solidworksConfig.interactivePartMeshOrdinals.map(
+    (ordinal) => meshNodeNames[ordinal],
+  ),
+  solidworksConfig.interactivePartNames,
+  'Android Mesh 回退序号必须逐项对应 58 个动画零件',
+);
 assert(solidworksComponent.includes('getInternalNodeByName'));
 assert(solidworksComponent.includes("model.getComponent('gltf')"));
 assert(solidworksComponent.includes('findRuntimeElement(name)'));
 assert(solidworksComponent.includes('getPrimitivesByNodeName'));
-assert(solidworksComponent.includes('resolvePartBinding(name, xrFrameSystem)'));
+assert(solidworksComponent.includes('resolvePartBinding(name, xrFrameSystem, partIndex = -1)'));
 assert(solidworksComponent.includes('xrFrameSystem.CubeShape'));
+assert(solidworksComponent.includes('xrFrameSystem.ShapeInteract'));
+assert(solidworksComponent.includes("'shape-interact',"));
+assert(solidworksComponent.includes('installPartInteraction(record, xrFrameSystem)'));
+assert(solidworksComponent.includes('collide: false'));
 assert(solidworksComponent.includes("hitElement.event.add('drag-shape'"));
 assert(solidworksComponent.includes('record.explodedPosition'));
 assert(solidworksComponent.includes('setPartPosition(name, mode)'));
@@ -215,7 +237,7 @@ assert(solidworksViewerSource.includes('handleInteractionReady'));
 assert(solidworksViewerSource.includes('handleInteractionWarning'));
 assert(solidworksViewerSource.includes('handleSelectedPartAction'));
 assert(solidworksViewerSource.includes('detail.reason'));
-assert(solidworksViewerSource.includes("buildLabel: 'R5 · 3.17.2'"));
+assert(solidworksViewerSource.includes("buildLabel: 'R8 · 3.17.2'"));
 const solidworksViewerTemplate = fs.readFileSync(
   path.join(
     projectRoot,
@@ -349,6 +371,43 @@ assert.strictEqual(treeBinding.element, treeElement);
 assert.strictEqual(treeBinding.transform, treeTransform);
 assert.strictEqual(unsafeLookupCalls, 0, '节点表无匹配项时不得调用不安全内部 API');
 
+// Android 3.17.2 真机可能同时隐藏 _nodeMap 与 _subRoots，但渲染中的
+// GLTF.meshes 仍是公开列表。应由 Mesh.el 的父元素和固定序号完成绑定。
+const meshFallbackTransform = { position: { x: 7, y: 8, z: 9 } };
+const meshFallbackParent = {
+  name: '',
+  getComponent(componentClass) {
+    return componentClass === 'Transform' ? meshFallbackTransform : null;
+  },
+};
+const meshFallbackElement = {
+  _parent: meshFallbackParent,
+  getComponent() {
+    return null;
+  },
+};
+componentInstance.gltfComponent = {
+  _nodeMap: new Map(),
+  _subRoots: [],
+  meshes: [{ el: meshFallbackElement }],
+  getInternalNodeByName() {
+    throw new Error('不应调用私有节点接口');
+  },
+  getPrimitivesByNodeName() {
+    return [];
+  },
+};
+const meshFallbackBinding = componentInstance.resolvePartBinding(
+  '29  挡油环-2',
+  { Transform: 'Transform' },
+  0,
+);
+assert(meshFallbackBinding, '空节点表和空子树时应从公开 GLTF.meshes 解析零件');
+assert.strictEqual(meshFallbackBinding.element, meshFallbackParent);
+assert.strictEqual(meshFallbackBinding.hitElement, meshFallbackElement);
+assert.strictEqual(meshFallbackBinding.transform, meshFallbackTransform);
+assert(componentInstance.runtimeNodeDiagnostic().includes('mesh-bindings=1'));
+
 const originalNow = Date.now;
 const originalSetTimeout = global.setTimeout;
 const originalClearTimeout = global.clearTimeout;
@@ -402,6 +461,10 @@ try {
   componentInstance.cameraOrbit = {
     disable() { orbitState.disabled = true; },
     enable() { orbitState.disabled = false; },
+  };
+  componentInstance.cameraTransform = {
+    worldRight: { x: -1, y: 0, z: 0 },
+    worldUp: { x: 0, y: 1, z: 0 },
   };
   componentInstance.handlePartTouch(partRecord);
   assert.strictEqual(orbitState.disabled, true);

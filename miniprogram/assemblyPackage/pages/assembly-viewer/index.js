@@ -48,7 +48,7 @@ Page({
     stateLabel: '正在加载装配体',
     stateHint: '准备 SolidWorks 减速器与爆炸动画',
     assemblyLabel: config.label,
-    buildLabel: 'R5 · 3.17.2',
+    buildLabel: 'R8 · 3.17.2',
     animatedNodeCount: config.animatedNodeCount,
     interactivePartCount: 0,
     partOptions: config.interactivePartNames,
@@ -59,9 +59,10 @@ Page({
   },
 
   onLoad(options = {}) {
+    this.pageDisposed = false;
     if (options.assemblyId && options.assemblyId !== config.id) {
       wx.showToast({ title: '该装配体尚未配置爆炸图', icon: 'none' });
-      setTimeout(() => wx.navigateBack(), 800);
+      this.invalidAssemblyTimer = setTimeout(() => wx.navigateBack(), 800);
       return;
     }
     const info = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -78,15 +79,21 @@ Page({
   },
 
   onUnload() {
+    this.pageDisposed = true;
     this.pendingAction = null;
+    this.pendingActionName = null;
     clearTimeout(this.loadWatchdog);
+    clearTimeout(this.revealTimer);
+    clearTimeout(this.invalidAssemblyTimer);
     this.loadWatchdog = null;
+    this.revealTimer = null;
+    this.invalidAssemblyTimer = null;
   },
 
   startLoadWatchdog() {
     clearTimeout(this.loadWatchdog);
     this.loadWatchdog = setTimeout(() => {
-      if (this.data.ready) return;
+      if (this.pageDisposed || this.data.ready) return;
       this.setData({
         loadTimedOut: true,
         progress: 0,
@@ -105,7 +112,7 @@ Page({
   handleAssetsProgress({ detail = {} }) {
     const raw = Number(detail.progress);
     if (!Number.isFinite(raw)) return;
-    const percent = raw <= 1 ? raw * 100 : raw;
+    const percent = Math.max(0, Math.min(100, raw <= 1 ? raw * 100 : raw));
     this.setData({
       progress: Math.max(this.data.progress, Math.round(22 + percent * 0.7)),
       loadingText: `正在加载装配资源 ${Math.min(Math.round(percent), 100)}%`,
@@ -122,7 +129,10 @@ Page({
   handleAssetsLoaded() {
     clearTimeout(this.loadWatchdog);
     this.loadWatchdog = null;
-    setTimeout(() => {
+    clearTimeout(this.revealTimer);
+    this.revealTimer = setTimeout(() => {
+      this.revealTimer = null;
+      if (this.pageDisposed) return;
       const nextData = {
         loading: false,
         ready: true,
@@ -164,7 +174,9 @@ Page({
 
   handleModelError({ detail = {} }) {
     clearTimeout(this.loadWatchdog);
+    clearTimeout(this.revealTimer);
     this.loadWatchdog = null;
+    this.revealTimer = null;
     this.setData({
       loading: false,
       ready: false,
@@ -183,7 +195,7 @@ Page({
   },
 
   handleModeTap(event) {
-    if (!this.data.ready || this.data.busy) return;
+    if (!this.data.ready || this.data.busy || this.data.partBusy) return;
     const actionName = event.currentTarget.dataset.action;
     const action = ACTIONS[actionName];
     const scene = this.selectComponent('#assemblyScene');
@@ -195,14 +207,26 @@ Page({
       stateLabel: action.pendingLabel,
       stateHint: '动画处理中，请稍候…',
     });
-    if (scene[action.method]() === false) {
+    let accepted = false;
+    try {
+      accepted = scene[action.method]() !== false;
+    } catch (error) {
+      console.warn(`[assembly-viewer] ${actionName} failed:`, error);
+    }
+    if (!accepted) {
       this.pendingAction = null;
       this.pendingActionName = null;
-      this.setData({ busy: false });
+      this.setData({
+        busy: false,
+        stateLabel: '操作暂不可用',
+        stateHint: '模型正在准备交互，请稍后重试',
+      });
     }
   },
 
-  handleAnimationStart() {},
+  handleAnimationStart() {
+    if (this.data.partBusy) this.setData({ partBusy: false });
+  },
 
   handleAnimationEnd({ detail = {} }) {
     const action = this.pendingAction;
@@ -254,19 +278,28 @@ Page({
   },
 
   handleSelectedPartAction(event) {
-    if (!this.data.ready || this.data.busy || this.data.partBusy) return;
+    if (
+      !this.data.ready ||
+      !this.data.interactivePartCount ||
+      this.data.busy ||
+      this.data.partBusy
+    ) {
+      return;
+    }
     const mode = event.currentTarget.dataset.mode;
     const scene = this.selectComponent('#assemblyScene');
-    if (
-      !scene ||
-      !this.data.selectedPartName ||
-      typeof scene.setPartPosition !== 'function' ||
-      scene.setPartPosition(this.data.selectedPartName, mode) === false
-    ) {
+    if (!scene || !this.data.selectedPartName || typeof scene.setPartPosition !== 'function') {
       wx.showToast({ title: '该零件交互尚未就绪', icon: 'none' });
       return;
     }
     this.setData({ partBusy: true });
+    try {
+      if (scene.setPartPosition(this.data.selectedPartName, mode) !== false) return;
+    } catch (error) {
+      console.warn('[assembly-viewer] part action failed:', error);
+    }
+    this.setData({ partBusy: false });
+    wx.showToast({ title: '该零件交互尚未就绪', icon: 'none' });
   },
 
   goBack() {
